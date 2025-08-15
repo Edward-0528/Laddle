@@ -92,11 +92,17 @@ io.on('connection', (socket) => {
 
   // Player joins an existing game
   socket.on('player:join', (payload: { code: string; name: string }, callback: (data: { ok: boolean; reason?: string }) => void) => {
+    console.log(`🎯 Player join attempt: ${payload.name} -> ${payload.code}`);
+    console.log(`📋 Available games:`, Object.keys(games));
+    console.log(`🔍 Looking for game ${payload.code}:`, games[payload.code] ? 'EXISTS' : 'NOT FOUND');
+    
     const game = games[payload.code];
     if (!game) {
-      return callback({ ok: false, reason: 'Game not found' });
+      console.log(`❌ Game ${payload.code} not found. Available: [${Object.keys(games).join(', ')}]`);
+      return callback({ ok: false, reason: `Game ${payload.code} not found. Available games: ${Object.keys(games).length}` });
     }
     if (game.state !== 'lobby') {
+      console.log(`❌ Game ${payload.code} is not in lobby state: ${game.state}`);
       return callback({ ok: false, reason: 'Game already started' });
     }
     
@@ -279,6 +285,21 @@ app.get('/health', (req, res) => {
 // Keep-alive endpoint for free tier hosting
 app.get('/ping', (req, res) => {
   res.json({ pong: Date.now() });
+});
+
+// Debug endpoint to check current games
+app.get('/games', (req, res) => {
+  const gamesList = Object.entries(games).map(([code, game]) => ({
+    code,
+    state: game.state,
+    players: Object.keys(game.players).length,
+    questions: game.questions.length,
+    hostConnected: game.hostSocketId ? 'yes' : 'no'
+  }));
+  res.json({ 
+    count: Object.keys(games).length,
+    games: gamesList 
+  });
 });
 
 const port = Number(process.env.PORT || 3001);
