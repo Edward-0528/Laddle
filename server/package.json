@@ -1,5 +1,5 @@
 {
-  "name": "server",
+  "name": "laddle-server",
   "version": "1.0.0",
   "main": "dist/index.js",
   "scripts": {
@@ -7,6 +7,9 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "keywords": [],
   "author": "",

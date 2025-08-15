@@ -17,9 +17,9 @@ const io = new Server(server, {
       'http://localhost:5173',
       'http://localhost:5174',
       process.env.CLIENT_ORIGIN || 'http://localhost:5173',
-      // Add your Firebase hosting URLs here after deployment
-      // 'https://your-app.web.app',
-      // 'https://your-app.firebaseapp.com'
+      'https://ladle-3c896.web.app',
+      'https://ladle-3c896.firebaseapp.com',
+      'https://laddle-server.onrender.com'
     ],
     methods: ['GET', 'POST']
   }
@@ -244,6 +244,21 @@ function finalizeQuestion(game: Game) {
     nextQuestion(game);
   }, 3000); // 3 second pause between questions
 }
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({
+    message: '🎮 Laddle Quiz Server',
+    status: 'running',
+    version: '1.0.0',
+    endpoints: {
+      health: '/health',
+      ping: '/ping'
+    },
+    games: Object.keys(games).length,
+    timestamp: new Date().toISOString()
+  });
+});
 
 // Health check endpoint
 app.get('/health', (req, res) => {
