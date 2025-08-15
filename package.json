@@ -1,0 +1,44 @@
+{
+  "name": "laddle",
+  "version": "1.0.0",
+  "description": "Real-time quiz game similar to Kahoot",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "vite",
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "tsc -b && vite build",
+    "build:server": "cd server && npm run build",
+    "start": "cd server && npm start",
+    "install:all": "npm install && cd server && npm install",
+    "preview": "vite preview"
+  },
+  "keywords": [
+    "quiz",
+    "game",
+    "kahoot",
+    "education",
+    "real-time"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.1",
+    "@vue/tsconfig": "^0.7.0",
+    "concurrently": "^9.2.0",
+    "typescript": "~5.8.3",
+    "vite": "^7.1.2",
+    "vue-tsc": "^3.0.5"
+  },
+  "dependencies": {
+    "@types/react": "^19.1.10",
+    "@types/react-dom": "^19.1.7",
+    "@vitejs/plugin-react-swc": "^4.0.0",
+    "firebase": "^12.1.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-router-dom": "^7.8.0",
+    "socket.io-client": "^4.8.1"
+  }
+}
