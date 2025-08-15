@@ -66,6 +66,12 @@ function generateGameCode(length = 6): string {
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
 
+  // Test endpoint to verify connection
+  socket.on('test:ping', (callback) => {
+    console.log(`Test ping from ${socket.id}`);
+    callback({ success: true, message: 'Server is working!', socketId: socket.id });
+  });
+
   // Host creates a new game
   socket.on('host:create', (payload: { questions: Question[] }, callback: (data: { code: string }) => void) => {
     const code = generateGameCode();
