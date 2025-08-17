@@ -40,13 +40,17 @@ Deploy your Laddle quiz app for **$0/month** using Firebase + Render.
 
 ### Phase 3: Deploy Frontend (Firebase)
 
+**📖 For detailed step-by-step Firebase setup, see: `FIREBASE_STEP_BY_STEP.md`**
+
+**Quick version:**
+
 1. **Install Firebase CLI**:
    ```bash
    npm install -g firebase-tools
    firebase login
    ```
 
-2. **Initialize Firebase**:
+2. **Initialize Firebase** (in your Laddle folder):
    ```bash
    firebase init hosting
    ```
@@ -55,13 +59,7 @@ Deploy your Laddle quiz app for **$0/month** using Firebase + Render.
    - Single-page app: `Yes`
    - Overwrite index.html: `No`
 
-3. **Set production environment**:
-   ```bash
-   # Create client/.env.production
-   echo "VITE_SOCKET_URL=https://laddle-server-xyz.onrender.com" > client/.env.production
-   ```
-
-4. **Build and deploy**:
+3. **Build and deploy**:
    ```bash
    cd client
    npm run build
@@ -69,9 +67,16 @@ Deploy your Laddle quiz app for **$0/month** using Firebase + Render.
    firebase deploy --only hosting
    ```
 
-5. **Get your URL**: Firebase will give you URLs like:
+4. **Save your URLs**: Firebase will give you URLs like:
    - `https://your-project.web.app`
    - `https://your-project.firebaseapp.com`
+
+5. **Create production environment**:
+   ```bash
+   cd client
+   echo "VITE_SOCKET_URL=https://laddle-server-xyz.onrender.com" > .env.production
+   cd ..
+   ```
 
 ### Phase 4: Connect Frontend and Backend
 

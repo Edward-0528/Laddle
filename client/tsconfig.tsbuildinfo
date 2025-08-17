@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/firebase.ts","./src/main.tsx","./src/vite-env.d.ts","./src/pages/game.tsx","./src/pages/home.tsx","./src/pages/host.tsx","./src/pages/player.tsx","./src/pages/testpage.tsx","./src/services/firebase.ts","./src/services/socket.ts"],"version":"5.8.3"}
