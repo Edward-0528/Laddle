@@ -27,7 +27,6 @@ import {
   getDocs,
   query,
   where,
-  orderBy,
   serverTimestamp,
   writeBatch,
 } from 'firebase/firestore';
@@ -45,6 +44,9 @@ const COLLECTION_NAME = 'quizzes';
 /**
  * Fetches all library template quizzes, optionally filtered by subject
  * and/or grade band. Results are ordered alphabetically by title.
+ *
+ * Falls back to a minimal two-field query if composite indexes aren't
+ * ready yet (first deploy scenario), then filters client-side.
  */
 export async function getLibraryQuizzes(opts?: {
   subject?: SubjectArea;
@@ -54,36 +56,52 @@ export async function getLibraryQuizzes(opts?: {
 
   const col = collection(db, COLLECTION_NAME);
 
-  // Build query constraints progressively
-  const constraints: Parameters<typeof query>[1][] = [
-    where('isTemplate', '==', true),
-    where('createdBy', '==', 'SYSTEM'),
-  ];
+  let results: Quiz[] = [];
 
-  if (opts?.subject) {
-    constraints.push(where('subject', '==', opts.subject));
+  try {
+    // Attempt the full query (requires composite index)
+    const constraints: Parameters<typeof query>[1][] = [
+      where('isTemplate', '==', true),
+      where('createdBy', '==', 'SYSTEM'),
+    ];
+
+    if (opts?.subject) {
+      constraints.push(where('subject', '==', opts.subject));
+    }
+    if (opts?.gradeBand) {
+      constraints.push(where('gradeBand', '==', opts.gradeBand));
+    }
+
+    const q = query(col, ...constraints);
+    const snapshot = await getDocs(q);
+    results = snapshot.docs.map(docToQuiz);
+  } catch (err: any) {
+    // Composite index not ready yet — fall back to the minimal 2-field query
+    // and filter client-side. This covers the first few minutes after deploy.
+    if (err?.code === 'failed-precondition' || err?.message?.includes('index')) {
+      console.warn('[Ladle] Composite index not ready, falling back to client-side filter');
+      const fallbackQ = query(
+        col,
+        where('isTemplate', '==', true),
+        where('createdBy', '==', 'SYSTEM')
+      );
+      const snapshot = await getDocs(fallbackQ);
+      results = snapshot.docs.map(docToQuiz);
+
+      // Apply filters client-side
+      if (opts?.subject) {
+        results = results.filter((q) => q.subject === opts.subject);
+      }
+      if (opts?.gradeBand) {
+        results = results.filter((q) => q.gradeBand === opts.gradeBand);
+      }
+    } else {
+      throw err; // Re-throw unexpected errors
+    }
   }
-  if (opts?.gradeBand) {
-    constraints.push(where('gradeBand', '==', opts.gradeBand));
-  }
 
-  // Firestore requires a composite index for multi-field queries.
-  // If subject or gradeBand filter is added we order by title client-side
-  // to avoid needing additional composite indexes during development.
-  if (!opts?.subject && !opts?.gradeBand) {
-    constraints.push(orderBy('title', 'asc'));
-  }
-
-  const q = query(col, ...constraints);
-  const snapshot = await getDocs(q);
-
-  const results: Quiz[] = snapshot.docs.map(docToQuiz);
-
-  // Client-side sort when extra filters are active
-  if (opts?.subject || opts?.gradeBand) {
-    results.sort((a, b) => a.title.localeCompare(b.title));
-  }
-
+  // Always sort client-side for consistency
+  results.sort((a, b) => a.title.localeCompare(b.title));
   return results;
 }
 

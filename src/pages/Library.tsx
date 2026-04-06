@@ -190,7 +190,17 @@ const Library: React.FC = () => {
         {error && (
           <div className="library-error">
             <p>{error}</p>
-            <Button variant="ghost" size="sm" onClick={() => { setError(''); load(); }}>Retry</Button>
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <Button variant="ghost" size="sm" onClick={() => { setError(''); load(); }}>Retry</Button>
+              {!user && (
+                <Button variant="primary" size="sm" onClick={() => navigate('/login')}>Sign in to seed</Button>
+              )}
+              {user && (
+                <Button variant="primary" size="sm" onClick={handleSeed} isLoading={isSeeding}>
+                  Seed Library Now
+                </Button>
+              )}
+            </div>
           </div>
         )}
 

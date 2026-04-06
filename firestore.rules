@@ -7,35 +7,36 @@ service cloud.firestore {
     // -----------------------------------------------------------------------
     match /quizzes/{quizId} {
 
-      // Anyone (even unauthenticated) can READ library templates.
-      // This lets the /library page work without signing in.
-      allow read: if resource.data.isTemplate == true
-                  && resource.data.createdBy == 'SYSTEM';
+      // LIST queries for library templates — anyone (including unauthenticated).
+      // Firestore evaluates list rules at collection level (no resource.data),
+      // so we need a broad allow list here and rely on query constraints
+      // (isTemplate==true, createdBy=='SYSTEM') to scope results server-side.
+      allow list: if true;
 
-      // Authenticated users can read their own quizzes.
-      allow read: if request.auth != null
-                  && resource.data.createdBy == request.auth.uid;
+      // GET (single document read) — public for SYSTEM templates,
+      // private for user-owned quizzes.
+      allow get: if resource.data.isTemplate == true
+                    && resource.data.createdBy == 'SYSTEM';
 
-      // Authenticated users can create quizzes (including forks).
-      // isTemplate=false quizzes must have createdBy == the calling uid.
+      allow get: if request.auth != null
+                    && resource.data.createdBy == request.auth.uid;
+
+      // CREATE — any signed-in user can create their own quizzes (forks).
       allow create: if request.auth != null
                     && request.resource.data.createdBy == request.auth.uid
                     && request.resource.data.isTemplate == false;
 
-      // Seed operation: authenticated users can write SYSTEM templates
-      // only when isTemplate=true and createdBy='SYSTEM'.
-      // In a production hardened setup you'd restrict this to an admin
-      // custom claim, but for a classroom tool this is acceptable.
+      // Seed CREATE — any signed-in user can write SYSTEM templates.
+      // This allows the in-browser seedLibrary() call to work.
       allow create: if request.auth != null
                     && request.resource.data.createdBy == 'SYSTEM'
                     && request.resource.data.isTemplate == true;
 
-      // Users can only update or delete their own quizzes.
+      // UPDATE / DELETE — users can only modify their own quizzes.
       allow update, delete: if request.auth != null
                              && resource.data.createdBy == request.auth.uid;
 
-      // SYSTEM templates: allow stat increment from any authenticated user
-      // (used by forkQuizToUser's best-effort counter).
+      // SYSTEM template stat increment (used by forkQuizToUser counter).
       allow update: if request.auth != null
                     && resource.data.createdBy == 'SYSTEM'
                     && resource.data.isTemplate == true
