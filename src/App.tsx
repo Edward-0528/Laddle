@@ -11,6 +11,7 @@ import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
 import ErrorBoundary from './components/ErrorBoundary';
 import ProtectedRoute from './components/ProtectedRoute';
+import { useAuth } from './context/AuthContext';
 import './components/ErrorBoundary.css';
 import './App.css';
 
@@ -35,10 +36,18 @@ function PageLoader() {
 }
 
 function App() {
+  const { user, signOut } = useAuth();
+
+  const firstName = user?.displayName?.split(' ')[0] ?? user?.email?.split('@')[0] ?? '';
+
   return (
     <ErrorBoundary>
       <div className="app">
-        <Navbar />
+        <Navbar
+          isAuthenticated={!!user}
+          userName={firstName}
+          onSignOut={signOut}
+        />
         <main className="app-main">
           <Suspense fallback={<PageLoader />}>
             <Routes>
