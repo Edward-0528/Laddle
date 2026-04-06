@@ -205,7 +205,7 @@ const Landing: React.FC = () => {
       <section className="categories section">
         <div className="container">
           <div className="section-header">
-            <h2 className="section-title">Ready-Made Quizzes for K–12</h2>
+            <h2 className="section-title">Ready-Made Quizzes for K-12</h2>
             <p className="section-subtitle">
               Pre-configured quizzes aligned to California curriculum standards.
               Pick a subject, copy the quiz to your dashboard, and launch it in seconds.
@@ -219,7 +219,7 @@ const Landing: React.FC = () => {
               { name: 'English Language Arts', subject: 'english',      color: '#55A3FF', desc: 'Reading comprehension, writing, grammar' },
               { name: 'History',             subject: 'history',        color: '#F5A623', desc: 'CA HSS: Colonial America through Civil Rights' },
               { name: 'Social Studies',      subject: 'social-studies', color: '#FF6B6B', desc: 'Civics, geography, economics' },
-              { name: 'All Subjects →',      subject: '',               color: '#8B6BD4', desc: 'Browse the full K–12 quiz library' },
+              { name: 'All Subjects',        subject: '',               color: '#8B6BD4', desc: 'Browse the full K-12 quiz library' },
             ].map((category) => (
               <Link
                 key={category.name}

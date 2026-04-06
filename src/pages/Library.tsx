@@ -116,7 +116,7 @@ const Library: React.FC = () => {
           <div className="library-header-text">
             <h1 className="library-title">Quiz Library</h1>
             <p className="library-subtitle">
-              Pre-configured quizzes for California K–12 classrooms. Pick a quiz,
+              Pre-configured quizzes for California K-12 classrooms. Pick a quiz,
               copy it to your dashboard, and launch it in seconds.
             </p>
           </div>
@@ -130,9 +130,9 @@ const Library: React.FC = () => {
         {/* -------- Success Toast -------- */}
         {forkedId && (
           <div className="library-toast">
-            ✅ Quiz copied to your library!{' '}
+            Quiz copied to your library!{' '}
             <button className="library-toast-link" onClick={() => navigate('/dashboard')}>
-              Go to Dashboard →
+              Go to Dashboard
             </button>
           </div>
         )}
@@ -215,7 +215,7 @@ const Library: React.FC = () => {
         {/* -------- Empty State -------- */}
         {!isLoading && quizzes.length === 0 && !error && (
           <div className="library-empty">
-            <div className="library-empty-icon">📚</div>
+            <div className="library-empty-icon"></div>
             <h2>No quizzes match your filters</h2>
             {subjectFilter || bandFilter ? (
               <>
@@ -292,7 +292,7 @@ const Library: React.FC = () => {
                           <p className="library-card-desc">{quiz.description}</p>
 
                           <div className="library-card-meta">
-                            <span>📝 {quiz.questions.length} questions</span>
+                            <span>{quiz.questions.length} questions</span>
                             {quiz.caStandard && (
                               <span className="library-standard-badge">
                                 {quiz.caStandard}
@@ -344,7 +344,7 @@ const Library: React.FC = () => {
                 onClick={() => setPreviewQuiz(null)}
                 aria-label="Close preview"
               >
-                ✕
+                x
               </button>
             </div>
 
@@ -364,7 +364,7 @@ const Library: React.FC = () => {
                           key={ci}
                           className={`library-modal-choice ${ci === q.correctAnswerIndex ? 'library-modal-choice-correct' : ''}`}
                         >
-                          {ci === q.correctAnswerIndex && <span className="choice-check">✓</span>}
+                          {ci === q.correctAnswerIndex && <span className="choice-check">correct</span>}
                           {choice}
                         </li>
                       ))}

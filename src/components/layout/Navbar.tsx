@@ -57,12 +57,6 @@ const Navbar: React.FC<NavbarProps> = ({
           >
             Join Quiz
           </Link>
-          <Link
-            to="/library"
-            className={`navbar-link ${isActive('/library') ? 'navbar-link-active' : ''}`}
-          >
-            📚 Library
-          </Link>
           {isAuthenticated && (
             <>
               <Link
@@ -127,9 +121,6 @@ const Navbar: React.FC<NavbarProps> = ({
           </Link>
           <Link to="/join" className="navbar-mobile-link" onClick={closeMobileMenu}>
             Join Quiz
-          </Link>
-          <Link to="/library" className="navbar-mobile-link" onClick={closeMobileMenu}>
-            📚 Library
           </Link>
           {isAuthenticated ? (
             <>
