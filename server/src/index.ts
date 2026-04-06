@@ -273,7 +273,31 @@ io.on('connection', (socket) => {
 
     if (recorded) {
       io.to(socket.id).emit('player:answer:ack');
+
+      // If every player has now answered, end the question early
+      const game = getGame(code);
+      if (game && game.state === 'question') {
+        const playerCount = Object.keys(game.players).length;
+        const answerCount = Object.keys(game.answers).length;
+        if (answerCount >= playerCount && playerCount > 0) {
+          endCurrentQuestion(code);
+        }
+      }
     }
+  });
+
+  // -----------------------------------------------------------------------
+  // lobby:request - Client requests a fresh player list (used on mount)
+  // -----------------------------------------------------------------------
+  socket.on('lobby:request', (payload: unknown) => {
+    const parsed = (payload as { code?: string })?.code;
+    if (typeof parsed !== 'string' || !parsed) return;
+    const code = parsed.toUpperCase().trim();
+    const game = getGame(code);
+    if (!game) return;
+    // Ensure socket is in the room before sending
+    socket.join(code);
+    socket.emit('lobby:update', getPlayerList(code));
   });
 
   // -----------------------------------------------------------------------
@@ -336,8 +360,13 @@ function startNextQuestion(code: string): void {
  * Finalizes the current question by calculating scores and emitting
  * the full result (correct answer, answer distribution, ranked leaderboard)
  * before automatically advancing to the next question.
+ * Guards against being called twice for the same question.
  */
 function endCurrentQuestion(code: string): void {
+  const game = getGame(code);
+  // Guard: only finalize if the game is still in question state
+  if (!game || game.state !== 'question') return;
+
   const result: QuestionResult | null = finalizeQuestion(code);
   if (result === null) return;
 

@@ -40,7 +40,7 @@ export interface Game {
   hostSocketId: string;
   players: Record<string, Player>;
   questions: Question[];
-  state: 'lobby' | 'question' | 'results' | 'ended';
+  state: 'lobby' | 'question' | 'reveal' | 'results' | 'ended';
   currentQuestionIndex: number;
   questionEndsAt?: number;
   answers: Record<string, PlayerAnswer>;
@@ -303,6 +303,9 @@ export function recordAnswer(
 export function finalizeQuestion(code: string): QuestionResult | null {
   const game = games[code];
   if (!game || game.state !== 'question') return null;
+
+  // Mark as reveal immediately to prevent double-finalization
+  game.state = 'reveal';
 
   const question = game.questions[game.currentQuestionIndex];
   const questionDurationMs = question.durationSec * 1000;

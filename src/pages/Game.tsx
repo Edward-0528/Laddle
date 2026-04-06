@@ -95,8 +95,7 @@ const Game = () => {
       setPlayers(playerList);
     });
 
-    socket.on('game:question', (data: GameData) => {
-      setQuestionTransition(true);
+    socket.on('game:question', (data: GameData) => {      setQuestionTransition(true);
       setTimeout(() => {
         setGameState('question');
         setCurrentQuestion(data);
@@ -131,6 +130,14 @@ const Game = () => {
 
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('host') === 'true') setIsHost(true);
+
+    // Request the current player list immediately on mount so players who
+    // navigated here after joining see the lobby populated right away
+    // (the lobby:update event from their join was emitted before this
+    // component mounted, so it was missed).
+    if (code) {
+      socket.emit('lobby:request', { code });
+    }
 
     return () => {
       socket.off('game:role');
