@@ -62,12 +62,6 @@ const Dashboard: React.FC = () => {
   }
 
   function handleLaunch(quiz: Quiz) {
-    if (!socket.connected) {
-      setError('Connecting to game server... please try again in a moment.');
-      socket.connect();
-      return;
-    }
-
     setLaunchingId(quiz.id);
     setError('');
 
@@ -78,21 +72,36 @@ const Dashboard: React.FC = () => {
       durationSec: quiz.settings?.questionDuration ?? 20,
     }));
 
-    socket.emit(
-      'host:create',
-      { questions },
-      (response: { code?: string; error?: string }) => {
-        setLaunchingId(null);
-        if (response.error || !response.code) {
-          setError(response.error ?? 'Failed to create game. Please try again.');
-          return;
+    function doEmit() {
+      socket.emit(
+        'host:create',
+        { questions },
+        (response: { code?: string; error?: string }) => {
+          setLaunchingId(null);
+          if (response.error || !response.code) {
+            setError(response.error ?? 'Failed to create game. Please try again.');
+            return;
+          }
+          console.log('[Ladle] Game created with code:', response.code);
+          navigate(`/game/${response.code}?host=true`);
         }
-        console.log('[Ladle] Game created with code:', response.code);
-        // Pass ?host=true so the Game page sets isHost immediately on mount
-        // (the game:role event fires before the page is mounted and would be missed)
-        navigate(`/game/${response.code}?host=true`);
-      }
-    );
+      );
+    }
+
+    if (socket.connected) {
+      doEmit();
+    } else {
+      // Server is waking up — wait for connection then emit automatically
+      socket.connect();
+      socket.once('connect', doEmit);
+      // If it doesn't connect within 30 s, surface a real error
+      const timeout = setTimeout(() => {
+        socket.off('connect', doEmit);
+        setLaunchingId(null);
+        setError('Could not reach the game server. Please check your connection and try again.');
+      }, 30000);
+      socket.once('connect', () => clearTimeout(timeout));
+    }
   }
 
   if (isLoading) {
@@ -140,6 +149,12 @@ const Dashboard: React.FC = () => {
             <Button variant="ghost" size="sm" onClick={() => setError('')}>
               Dismiss
             </Button>
+          </div>
+        )}
+
+        {launchingId && !error && (
+          <div className="dashboard-info">
+            <p>Connecting to game server — this may take up to 30 seconds if the server is waking up...</p>
           </div>
         )}
 

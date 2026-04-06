@@ -51,6 +51,22 @@
   margin: 0;
 }
 
+.dashboard-info {
+  display: flex;
+  align-items: center;
+  background: var(--color-primary-bg, #f0ebff);
+  border: 1px solid var(--color-primary-light, #c4b5fd);
+  border-radius: var(--radius-md);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+  color: var(--color-primary-dark, #5b21b6);
+  font-weight: 500;
+}
+
+.dashboard-info p {
+  margin: 0;
+}
+
 /* -------- Empty State -------- */
 .dashboard-empty {
   text-align: center;
