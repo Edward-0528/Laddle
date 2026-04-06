@@ -274,13 +274,20 @@ io.on('connection', (socket) => {
     if (recorded) {
       io.to(socket.id).emit('player:answer:ack');
 
+      // Broadcast live answer count to all in the room (host shows a progress bar)
+      const gameForCount = getGame(code);
+      if (gameForCount) {
+        const count = Object.keys(gameForCount.answers).length;
+        io.to(code).emit('game:answer:count', count);
+      }
+
       // If every player has now answered, end the question early
       const game = getGame(code);
       if (game && game.state === 'question') {
         const playerCount = Object.keys(game.players).length;
         const answerCount = Object.keys(game.answers).length;
         if (answerCount >= playerCount && playerCount > 0) {
-          endCurrentQuestion(code);
+          endCurrentQuestion(code, game.currentQuestionIndex);
         }
       }
     }
@@ -348,10 +355,13 @@ function startNextQuestion(code: string): void {
       q: result.questionData.question,
     });
 
-    // Schedule automatic question finalization when time expires
+    // Tag each timer with the question index so stale timers from a previous
+    // question (e.g. triggered when all players answered early) don't fire
+    // and accidentally end the *next* question.
+    const questionIndex = result.questionData.index;
     const durationMs = result.questionData.question.durationSec * 1000;
     setTimeout(() => {
-      endCurrentQuestion(code);
+      endCurrentQuestion(code, questionIndex);
     }, durationMs + 500); // 500ms buffer for network latency
   }
 }
@@ -360,12 +370,13 @@ function startNextQuestion(code: string): void {
  * Finalizes the current question by calculating scores and emitting
  * the full result (correct answer, answer distribution, ranked leaderboard)
  * before automatically advancing to the next question.
- * Guards against being called twice for the same question.
+ * Guards against being called twice for the same question via questionIndex tag.
  */
-function endCurrentQuestion(code: string): void {
+function endCurrentQuestion(code: string, questionIndex: number): void {
   const game = getGame(code);
-  // Guard: only finalize if the game is still in question state
+  // Guard: only finalize if we are still on the same question that scheduled this call
   if (!game || game.state !== 'question') return;
+  if (game.currentQuestionIndex !== questionIndex) return;
 
   const result: QuestionResult | null = finalizeQuestion(code);
   if (result === null) return;

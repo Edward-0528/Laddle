@@ -1,8 +1,10 @@
 // ---------------------------------------------------------------------------
 // Game Page
 // Full Kahoot-style game experience with speed-based scoring, streak bonuses,
-// animated countdown timer, post-question reveal with answer distribution,
-// rank deltas, and an animated final podium.
+// animated countdown timer, fullscreen animated reveal between questions,
+// rank deltas, live leaderboard, and an animated final podium.
+// Host is spectator-only: sees question + live answer counts + leaderboard.
+// Players see the question and answer choices only.
 // ---------------------------------------------------------------------------
 
 import { useState, useEffect, useRef } from 'react';
@@ -57,11 +59,16 @@ interface QuestionResult {
 // ---------------------------------------------------------------------------
 
 const CHOICE_COLORS = [
-  { base: '#E53E3E', light: 'rgba(229, 62, 62, 0.12)', label: 'A' },
-  { base: '#3182CE', light: 'rgba(49, 130, 206, 0.12)', label: 'B' },
-  { base: '#D69E2E', light: 'rgba(214, 158, 46, 0.12)', label: 'C' },
-  { base: '#38A169', light: 'rgba(56, 161, 105, 0.12)', label: 'D' },
+  { base: '#E53E3E', light: 'rgba(229, 62, 62, 0.15)', label: 'A' },
+  { base: '#3182CE', light: 'rgba(49, 130, 206, 0.15)', label: 'B' },
+  { base: '#D69E2E', light: 'rgba(214, 158, 46, 0.15)', label: 'C' },
+  { base: '#38A169', light: 'rgba(56, 161, 105, 0.15)', label: 'D' },
 ];
+
+// ---------------------------------------------------------------------------
+// Reveal sub-screens
+// ---------------------------------------------------------------------------
+type RevealPhase = 'correct' | 'scores' | 'leaderboard';
 
 // ---------------------------------------------------------------------------
 // Component
@@ -80,7 +87,14 @@ const Game = () => {
   const [leaderboard, setLeaderboard] = useState<RankedPlayer[]>([]);
   const [isHost, setIsHost] = useState(false);
   const [questionTransition, setQuestionTransition] = useState(false);
+  // Live answer counts visible to host during a question
+  const [answerCount, setAnswerCount] = useState(0);
+  // Animated reveal sub-phase
+  const [revealPhase, setRevealPhase] = useState<RevealPhase>('correct');
+  // Tracks which player scores are being animated
+  const [animatedScores, setAnimatedScores] = useState<Record<string, number>>({});
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const joinUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/join?code=${code}`
@@ -95,17 +109,25 @@ const Game = () => {
       setPlayers(playerList);
     });
 
-    socket.on('game:question', (data: GameData) => {      setQuestionTransition(true);
+    socket.on('game:question', (data: GameData) => {
+      setQuestionTransition(true);
+      // Reset live answer count for host
+      setAnswerCount(0);
       setTimeout(() => {
         setGameState('question');
         setCurrentQuestion(data);
         setSelectedChoice(null);
         setHasAnswered(false);
         setQuestionResult(null);
+        setRevealPhase('correct');
         setTimeLeft(data.q.durationSec);
         setTotalTime(data.q.durationSec);
         setQuestionTransition(false);
       }, 400);
+    });
+
+    socket.on('game:answer:count', (count: number) => {
+      setAnswerCount(count);
     });
 
     socket.on('game:question:end', (result: QuestionResult) => {
@@ -113,6 +135,32 @@ const Game = () => {
       setLeaderboard(result.leaderboard);
       setGameState('reveal');
       setTimeLeft(0);
+      setRevealPhase('correct');
+
+      // Phase 1: show correct answer + bars (2s)
+      // Phase 2: animate point gains (3s)
+      // Phase 3: show updated leaderboard (stays until next question starts)
+      revealTimerRef.current = setTimeout(() => {
+        setRevealPhase('scores');
+        // Build starting scores (pre-points) for animation
+        const preScores: Record<string, number> = {};
+        result.leaderboard.forEach(p => {
+          preScores[p.name] = p.score - p.pointsEarned;
+        });
+        setAnimatedScores(preScores);
+
+        // After a beat, animate scores counting up
+        setTimeout(() => {
+          const finalScores: Record<string, number> = {};
+          result.leaderboard.forEach(p => { finalScores[p.name] = p.score; });
+          setAnimatedScores(finalScores);
+        }, 300);
+
+        // Phase 3: leaderboard
+        revealTimerRef.current = setTimeout(() => {
+          setRevealPhase('leaderboard');
+        }, 2500);
+      }, 2000);
     });
 
     socket.on('game:results', (data: RankedPlayer[]) => {
@@ -131,10 +179,6 @@ const Game = () => {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('host') === 'true') setIsHost(true);
 
-    // Request the current player list immediately on mount so players who
-    // navigated here after joining see the lobby populated right away
-    // (the lobby:update event from their join was emitted before this
-    // component mounted, so it was missed).
     if (code) {
       socket.emit('lobby:request', { code });
     }
@@ -144,10 +188,12 @@ const Game = () => {
       socket.off('lobby:update');
       socket.off('game:question');
       socket.off('game:question:end');
+      socket.off('game:answer:count');
       socket.off('game:results');
       socket.off('game:ended');
       socket.off('player:answer:ack');
       if (timerRef.current) clearTimeout(timerRef.current);
+      if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
     };
   }, []);
 
@@ -164,7 +210,7 @@ const Game = () => {
   }
 
   function selectChoice(choiceIndex: number) {
-    if (hasAnswered || timeLeft <= 0 || gameState !== 'question') return;
+    if (isHost || hasAnswered || timeLeft <= 0 || gameState !== 'question') return;
     setSelectedChoice(choiceIndex);
     socket.emit('player:answer', { code, choiceIndex });
   }
@@ -195,11 +241,7 @@ const Game = () => {
 
   function renderStreakBadge(streak: number) {
     if (streak < 2) return null;
-    return (
-      <span className="streak-badge">
-        {streak} in a row
-      </span>
-    );
+    return <span className="streak-badge">{streak}x streak</span>;
   }
 
   function renderRankDelta(delta: number) {
@@ -209,7 +251,7 @@ const Game = () => {
   }
 
   // ---------------------------------------------------------------------------
-  // Ended state — final podium
+  // Ended / Results state — final podium
   // ---------------------------------------------------------------------------
 
   if (gameState === 'ended' || gameState === 'results') {
@@ -222,16 +264,10 @@ const Game = () => {
         <div className="container">
           <div className="podium-screen">
             <h1 className="podium-title">Final Results</h1>
-
             <div className="podium-stage">
               {podiumOrder.map((entry) => (
-                <div
-                  key={entry.rank}
-                  className={`podium-column podium-rank-${entry.rank}`}
-                >
-                  <div className="podium-avatar">
-                    {entry.name.charAt(0).toUpperCase()}
-                  </div>
+                <div key={entry.rank} className={`podium-column podium-rank-${entry.rank}`}>
+                  <div className="podium-avatar">{entry.name.charAt(0).toUpperCase()}</div>
                   <div className="podium-name">{entry.name}</div>
                   <div className="podium-score">{entry.score.toLocaleString()} pts</div>
                   <div className={`podium-block podium-block-${entry.rank}`}>
@@ -242,7 +278,6 @@ const Game = () => {
                 </div>
               ))}
             </div>
-
             {rest.length > 0 && (
               <div className="podium-rest">
                 {rest.map((entry) => (
@@ -254,7 +289,6 @@ const Game = () => {
                 ))}
               </div>
             )}
-
             <div className="podium-actions">
               <Button variant="primary" size="lg" onClick={() => window.location.href = '/'}>
                 Back to Home
@@ -267,65 +301,174 @@ const Game = () => {
   }
 
   // ---------------------------------------------------------------------------
-  // Reveal state — answer distribution + leaderboard update
+  // Reveal state — fullscreen animated between-question screen
   // ---------------------------------------------------------------------------
 
   if (gameState === 'reveal' && currentQuestion && questionResult) {
     const totalAnswers = questionResult.answerCounts.reduce((a, b) => a + b, 0);
 
     return (
-      <div className="game-page">
+      <div className="game-page game-page-dark reveal-fullscreen">
+        <div className={`reveal-phase-wrapper reveal-phase-${revealPhase}`}>
+
+          {/* ---- Phase: correct answer ---- */}
+          {revealPhase === 'correct' && (
+            <div className="reveal-correct-phase">
+              <p className="reveal-phase-label">Question {(currentQuestion.index + 1)} of {currentQuestion.total}</p>
+              <div className="reveal-question-banner">{currentQuestion.q.text}</div>
+              <div className="reveal-choices-grid">
+                {currentQuestion.q.choices.map((choice, index) => {
+                  const count = questionResult.answerCounts[index] || 0;
+                  const pct = totalAnswers > 0 ? Math.round((count / totalAnswers) * 100) : 0;
+                  const isCorrect = index === questionResult.correctIndex;
+                  const color = CHOICE_COLORS[index % CHOICE_COLORS.length];
+                  return (
+                    <div
+                      key={index}
+                      className={`reveal-choice-card ${isCorrect ? 'reveal-choice-card-correct' : 'reveal-choice-card-wrong'}`}
+                      style={{ '--choice-color': color.base } as React.CSSProperties}
+                    >
+                      <div className="reveal-choice-card-header">
+                        <span className="reveal-choice-badge" style={{ background: color.base }}>{color.label}</span>
+                        <span className="reveal-choice-card-text">{choice}</span>
+                        {isCorrect && <span className="reveal-correct-checkmark">✓</span>}
+                      </div>
+                      <div className="reveal-bar-track">
+                        <div
+                          className="reveal-bar-fill"
+                          style={{ width: `${pct}%`, background: isCorrect ? '#48BB78' : color.base }}
+                        />
+                      </div>
+                      <div className="reveal-bar-label">{count} {count === 1 ? 'player' : 'players'} · {pct}%</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ---- Phase: score gains (big numbers flying up) ---- */}
+          {revealPhase === 'scores' && (
+            <div className="reveal-scores-phase">
+              <p className="reveal-phase-label">Points Earned</p>
+              <div className="reveal-score-list">
+                {questionResult.leaderboard.map((entry, i) => (
+                  <div
+                    key={entry.name}
+                    className="reveal-score-row"
+                    style={{ animationDelay: `${i * 80}ms` }}
+                  >
+                    <span className="reveal-score-rank">#{entry.rank}</span>
+                    <span className="reveal-score-name">{entry.name}</span>
+                    {entry.pointsEarned > 0 && (
+                      <span className="reveal-score-points-earned points-pop">
+                        +{entry.pointsEarned}
+                      </span>
+                    )}
+                    {entry.streak >= 2 && renderStreakBadge(entry.streak)}
+                    <span className="reveal-score-total">
+                      {(animatedScores[entry.name] ?? entry.score).toLocaleString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ---- Phase: leaderboard with rank movement ---- */}
+          {revealPhase === 'leaderboard' && (
+            <div className="reveal-leaderboard-phase">
+              <p className="reveal-phase-label">Leaderboard</p>
+              <div className="reveal-lb-list">
+                {leaderboard.slice(0, 8).map((entry, i) => (
+                  <div
+                    key={entry.name}
+                    className={`reveal-lb-row ${entry.rank === 1 ? 'reveal-lb-first' : ''}`}
+                    style={{ animationDelay: `${i * 60}ms` }}
+                  >
+                    <span className={`reveal-lb-rank ${entry.rankDelta > 0 ? 'rank-moved-up' : entry.rankDelta < 0 ? 'rank-moved-down' : ''}`}>
+                      #{entry.rank}
+                    </span>
+                    <span className="reveal-lb-name">{entry.name}</span>
+                    {renderStreakBadge(entry.streak)}
+                    {renderRankDelta(entry.rankDelta)}
+                    <span className="reveal-lb-score">{entry.score.toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="reveal-next-hint">Next question coming up...</p>
+            </div>
+          )}
+
+        </div>
+      </div>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Question state — HOST view (spectator: see question + live answer count + choices displayed)
+  // ---------------------------------------------------------------------------
+
+  if (gameState === 'question' && currentQuestion && isHost) {
+    const playerCount = players.length;
+    const pct = playerCount > 0 ? Math.round((answerCount / playerCount) * 100) : 0;
+
+    return (
+      <div className="game-page game-page-dark">
         <div className="container game-container">
-          <div className={`game-reveal ${questionTransition ? 'game-transition-out' : 'game-transition-in'}`}>
+          <div className={`game-question-screen ${questionTransition ? 'game-transition-out' : 'game-transition-in'}`}>
 
-            <div className="reveal-question-text">{currentQuestion.q.text}</div>
+            <div className="question-top-bar">
+              <span className="question-progress">
+                Q{currentQuestion.index + 1} / {currentQuestion.total}
+              </span>
+              <div className="timer-container">
+                <svg className="timer-ring" viewBox="0 0 44 44">
+                  <circle className="timer-ring-bg" cx="22" cy="22" r="18" />
+                  <circle
+                    className="timer-ring-fill"
+                    cx="22" cy="22" r="18"
+                    style={{ stroke: timerColor, strokeDashoffset: `${(1 - timerPercent / 100) * 113}px` }}
+                  />
+                </svg>
+                <span className={`timer-number ${timeLeft <= 5 ? 'timer-urgent' : ''}`} style={{ color: timerColor }}>
+                  {timeLeft}
+                </span>
+              </div>
+            </div>
 
-            <div className="reveal-choices">
+            <div className="question-text-box">
+              <h2 className="question-text">{currentQuestion.q.text}</h2>
+            </div>
+
+            {/* Host sees choices as display tiles, not buttons */}
+            <div className="choices-grid host-choices">
               {currentQuestion.q.choices.map((choice, index) => {
-                const count = questionResult.answerCounts[index] || 0;
-                const pct = totalAnswers > 0 ? Math.round((count / totalAnswers) * 100) : 0;
-                const isCorrect = index === questionResult.correctIndex;
                 const color = CHOICE_COLORS[index % CHOICE_COLORS.length];
-
                 return (
-                  <div key={index} className={`reveal-choice ${isCorrect ? 'reveal-choice-correct' : 'reveal-choice-wrong'}`}>
-                    <div className="reveal-choice-header">
-                      <span className="reveal-choice-letter" style={{ background: color.base }}>{color.label}</span>
-                      <span className="reveal-choice-text">{choice}</span>
-                      {isCorrect && <span className="reveal-correct-badge">Correct</span>}
-                    </div>
-                    <div className="reveal-bar-track">
-                      <div
-                        className="reveal-bar-fill"
-                        style={{
-                          width: `${pct}%`,
-                          background: isCorrect ? 'var(--color-success)' : color.base,
-                        }}
-                      />
-                    </div>
-                    <div className="reveal-bar-count">{count} player{count !== 1 ? 's' : ''} ({pct}%)</div>
+                  <div
+                    key={index}
+                    className="game-choice game-choice-host"
+                    style={{ borderColor: color.base, background: color.light }}
+                  >
+                    <span className="choice-letter" style={{ background: color.base }}>{color.label}</span>
+                    <span className="choice-text">{choice}</span>
                   </div>
                 );
               })}
             </div>
 
-            <div className="reveal-leaderboard">
-              <h3 className="reveal-leaderboard-title">Standings</h3>
-              {leaderboard.slice(0, 5).map((entry) => (
-                <div key={entry.rank} className={`reveal-leaderboard-row ${entry.rank <= 3 ? 'reveal-row-top' : ''}`}>
-                  <span className="reveal-rank">#{entry.rank}</span>
-                  <span className="reveal-name">{entry.name}</span>
-                  {renderStreakBadge(entry.streak)}
-                  {entry.pointsEarned > 0 && (
-                    <span className="reveal-points-earned">+{entry.pointsEarned}</span>
-                  )}
-                  {renderRankDelta(entry.rankDelta)}
-                  <span className="reveal-score">{entry.score.toLocaleString()}</span>
-                </div>
-              ))}
+            {/* Live answer progress bar */}
+            <div className="host-answer-tracker">
+              <div className="hat-bar-row">
+                <span className="hat-label">{answerCount} / {playerCount} answered</span>
+                <span className="hat-pct">{pct}%</span>
+              </div>
+              <div className="hat-bar-track">
+                <div className="hat-bar-fill" style={{ width: `${pct}%` }} />
+              </div>
             </div>
 
-            <p className="reveal-next-hint">Next question coming up...</p>
           </div>
         </div>
       </div>
@@ -333,7 +476,7 @@ const Game = () => {
   }
 
   // ---------------------------------------------------------------------------
-  // Question state
+  // Question state — PLAYER view
   // ---------------------------------------------------------------------------
 
   if (gameState === 'question' && currentQuestion) {
@@ -352,16 +495,10 @@ const Game = () => {
                   <circle
                     className="timer-ring-fill"
                     cx="22" cy="22" r="18"
-                    style={{
-                      stroke: timerColor,
-                      strokeDashoffset: `${(1 - timerPercent / 100) * 113}px`,
-                    }}
+                    style={{ stroke: timerColor, strokeDashoffset: `${(1 - timerPercent / 100) * 113}px` }}
                   />
                 </svg>
-                <span
-                  className={`timer-number ${timeLeft <= 5 ? 'timer-urgent' : ''}`}
-                  style={{ color: timerColor }}
-                >
+                <span className={`timer-number ${timeLeft <= 5 ? 'timer-urgent' : ''}`} style={{ color: timerColor }}>
                   {timeLeft}
                 </span>
               </div>
@@ -375,7 +512,6 @@ const Game = () => {
               {currentQuestion.q.choices.map((choice, index) => {
                 const color = CHOICE_COLORS[index % CHOICE_COLORS.length];
                 const state = getChoiceState(index);
-
                 return (
                   <button
                     key={index}
@@ -387,12 +523,7 @@ const Game = () => {
                     onClick={() => selectChoice(index)}
                     disabled={hasAnswered || timeLeft <= 0}
                   >
-                    <span
-                      className="choice-letter"
-                      style={{ background: color.base }}
-                    >
-                      {color.label}
-                    </span>
+                    <span className="choice-letter" style={{ background: color.base }}>{color.label}</span>
                     <span className="choice-text">{choice}</span>
                   </button>
                 );
@@ -401,10 +532,9 @@ const Game = () => {
 
             {hasAnswered && (
               <div className="answer-submitted-banner">
-                Answer locked in. Waiting for results...
+                Answer locked in — waiting for results...
               </div>
             )}
-
             {timeLeft <= 0 && !hasAnswered && (
               <div className="time-up-banner">Time is up!</div>
             )}
@@ -423,22 +553,14 @@ const Game = () => {
       <div className="container game-container">
         <Card variant="elevated" padding="lg" className="game-card game-card-wide">
           <h2 className="game-heading">Game Lobby</h2>
-
           {isHost && <div className="host-badge">You are the Host</div>}
 
           <div className="lobby-layout">
-
             {/* ---- Left: QR + code ---- */}
             <div className="lobby-join-panel">
               <p className="lobby-join-panel-label">Scan to join</p>
               <div className="lobby-qr-wrapper">
-                <QRCodeSVG
-                  value={joinUrl}
-                  size={180}
-                  bgColor="#ffffff"
-                  fgColor="#1a0a3e"
-                  level="M"
-                />
+                <QRCodeSVG value={joinUrl} size={180} bgColor="#ffffff" fgColor="#1a0a3e" level="M" />
               </div>
               <p className="lobby-or">or go to</p>
               <p className="lobby-join-domain">
@@ -491,7 +613,6 @@ const Game = () => {
                 </p>
               )}
             </div>
-
           </div>
         </Card>
       </div>
