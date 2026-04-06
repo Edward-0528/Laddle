@@ -52,6 +52,12 @@ export function docToQuiz(docSnap: any): Quiz {
     createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt ?? '',
     updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt ?? '',
     isPublic: data.isPublic ?? false,
+    // Library / template fields
+    isTemplate: data.isTemplate ?? false,
+    subject: data.subject ?? undefined,
+    gradeLevel: data.gradeLevel ?? undefined,
+    gradeBand: data.gradeBand ?? undefined,
+    caStandard: data.caStandard ?? undefined,
   };
 }
 
