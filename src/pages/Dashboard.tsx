@@ -65,7 +65,8 @@ const Dashboard: React.FC = () => {
     setLaunchingId(quiz.id);
     setError('');
 
-    const questions = quiz.questions.map((q) => ({
+    const questions = quiz.questions.map((q, i) => ({
+      id: q.id || `q${i + 1}`,
       text: q.text,
       choices: q.choices,
       answerIndex: q.correctAnswerIndex,
