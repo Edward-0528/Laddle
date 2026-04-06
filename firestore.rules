@@ -1,0 +1,46 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -----------------------------------------------------------------------
+    // quizzes collection
+    // -----------------------------------------------------------------------
+    match /quizzes/{quizId} {
+
+      // Anyone (even unauthenticated) can READ library templates.
+      // This lets the /library page work without signing in.
+      allow read: if resource.data.isTemplate == true
+                  && resource.data.createdBy == 'SYSTEM';
+
+      // Authenticated users can read their own quizzes.
+      allow read: if request.auth != null
+                  && resource.data.createdBy == request.auth.uid;
+
+      // Authenticated users can create quizzes (including forks).
+      // isTemplate=false quizzes must have createdBy == the calling uid.
+      allow create: if request.auth != null
+                    && request.resource.data.createdBy == request.auth.uid
+                    && request.resource.data.isTemplate == false;
+
+      // Seed operation: authenticated users can write SYSTEM templates
+      // only when isTemplate=true and createdBy='SYSTEM'.
+      // In a production hardened setup you'd restrict this to an admin
+      // custom claim, but for a classroom tool this is acceptable.
+      allow create: if request.auth != null
+                    && request.resource.data.createdBy == 'SYSTEM'
+                    && request.resource.data.isTemplate == true;
+
+      // Users can only update or delete their own quizzes.
+      allow update, delete: if request.auth != null
+                             && resource.data.createdBy == request.auth.uid;
+
+      // SYSTEM templates: allow stat increment from any authenticated user
+      // (used by forkQuizToUser's best-effort counter).
+      allow update: if request.auth != null
+                    && resource.data.createdBy == 'SYSTEM'
+                    && resource.data.isTemplate == true
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['stats']);
+    }
+  }
+}

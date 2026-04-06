@@ -8,7 +8,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getLibraryQuizzes, forkQuizToUser } from '../services/library';
+import { getLibraryQuizzes, forkQuizToUser, seedLibrary } from '../services/library';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import type { Quiz, SubjectArea, GradeBand } from '../types/quiz';
@@ -43,6 +43,7 @@ const Library: React.FC = () => {
   const [forkingId, setForkingId]           = useState<string | null>(null);
   const [forkedId, setForkedId]             = useState<string | null>(null); // just-forked quiz id
   const [previewQuiz, setPreviewQuiz]       = useState<Quiz | null>(null);
+  const [isSeeding, setIsSeeding]           = useState(false);
 
   // Load (or reload) templates whenever filters change
   const load = useCallback(async () => {
@@ -64,8 +65,21 @@ const Library: React.FC = () => {
 
   useEffect(() => { load(); }, [load]);
 
-  async function handleFork(quiz: Quiz) {
-    if (!user) {
+  async function handleSeed() {
+    setIsSeeding(true);
+    setError('');
+    try {
+      await seedLibrary();
+      await load();
+    } catch (err) {
+      console.error('[Ladle] Seed failed:', err);
+      setError('Seeding failed — check the console for details.');
+    } finally {
+      setIsSeeding(false);
+    }
+  }
+
+  async function handleFork(quiz: Quiz) {    if (!user) {
       navigate('/login');
       return;
     }
@@ -193,10 +207,26 @@ const Library: React.FC = () => {
           <div className="library-empty">
             <div className="library-empty-icon">📚</div>
             <h2>No quizzes match your filters</h2>
-            <p>Try clearing the subject or grade filter.</p>
-            <Button variant="ghost" size="md" onClick={() => { setSubjectFilter(''); setBandFilter(''); }}>
-              Clear Filters
-            </Button>
+            {subjectFilter || bandFilter ? (
+              <>
+                <p>Try clearing the subject or grade filter.</p>
+                <Button variant="ghost" size="md" onClick={() => { setSubjectFilter(''); setBandFilter(''); }}>
+                  Clear Filters
+                </Button>
+              </>
+            ) : (
+              <>
+                <p>The quiz library hasn't been seeded yet.</p>
+                <Button
+                  variant="primary"
+                  size="md"
+                  onClick={handleSeed}
+                  isLoading={isSeeding}
+                >
+                  Seed Library Now
+                </Button>
+              </>
+            )}
           </div>
         )}
 

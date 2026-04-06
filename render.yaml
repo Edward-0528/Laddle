@@ -12,4 +12,6 @@ services:
       - key: NODE_ENV
         value: production
       - key: CLIENT_ORIGIN
+        value: https://ladle.netlify.app
+      - key: ADDITIONAL_ORIGINS
         value: https://ladle-3c896.web.app
