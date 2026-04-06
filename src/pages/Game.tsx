@@ -8,6 +8,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { socket } from '../services/socket';
+import { QRCodeSVG } from 'qrcode.react';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import './Game.css';
@@ -413,58 +414,78 @@ const Game = () => {
   return (
     <div className="game-page">
       <div className="container game-container">
-        <Card variant="elevated" padding="lg" className="game-card">
+        <Card variant="elevated" padding="lg" className="game-card game-card-wide">
           <h2 className="game-heading">Game Lobby</h2>
 
-          {isHost && (
-            <div className="host-badge">You are the Host</div>
-          )}
+          {isHost && <div className="host-badge">You are the Host</div>}
 
-          <div className="game-code-display">
-            <span className="game-code-label">Game Code</span>
-            <span className="game-code-value">{code}</span>
-          </div>
+          <div className="lobby-layout">
 
-          <p className="lobby-join-url">
-            Players join at: <strong>{joinUrl}</strong>
-          </p>
+            {/* ---- Left: QR + code ---- */}
+            <div className="lobby-join-panel">
+              <p className="lobby-join-panel-label">Scan to join</p>
+              <div className="lobby-qr-wrapper">
+                <QRCodeSVG
+                  value={joinUrl}
+                  size={180}
+                  bgColor="#ffffff"
+                  fgColor="#1a0a3e"
+                  level="M"
+                />
+              </div>
+              <p className="lobby-or">or go to</p>
+              <p className="lobby-join-domain">
+                {typeof window !== 'undefined' ? window.location.origin : ''}/join
+              </p>
+              <div className="game-code-display">
+                <span className="game-code-label">Game Code</span>
+                <span className="game-code-value">{code}</span>
+              </div>
+            </div>
 
-          <div className="leaderboard">
-            <h3 className="leaderboard-title">Players ({players.length})</h3>
-            {players.length === 0 ? (
-              <p className="lobby-waiting">Waiting for players to join...</p>
-            ) : (
-              players.map((player) => (
-                <div key={player.id} className="leaderboard-row">
-                  <span className="leaderboard-name">{player.name}</span>
-                  <span className="leaderboard-score">{player.score} pts</span>
+            {/* ---- Right: player list + actions ---- */}
+            <div className="lobby-players-panel">
+              <div className="leaderboard">
+                <h3 className="leaderboard-title">Players ({players.length})</h3>
+                {players.length === 0 ? (
+                  <p className="lobby-waiting">Waiting for players to join...</p>
+                ) : (
+                  players.map((player) => (
+                    <div key={player.id} className="leaderboard-row">
+                      <span className="leaderboard-name">{player.name}</span>
+                      <span className="leaderboard-score">{player.score} pts</span>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {isHost && (
+                <div className="game-actions">
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    fullWidth
+                    onClick={startGame}
+                    disabled={players.length === 0}
+                  >
+                    {players.length === 0
+                      ? 'Waiting for Players...'
+                      : `Start Quiz (${players.length} player${players.length !== 1 ? 's' : ''})`}
+                  </Button>
+                  {players.length === 0 && (
+                    <p className="game-actions-hint">At least 1 player must join before starting.</p>
+                  )}
                 </div>
-              ))
-            )}
-          </div>
+              )}
 
-          {isHost && (
-            <div className="game-actions">
-              <Button
-                variant="primary"
-                size="lg"
-                fullWidth
-                onClick={startGame}
-                disabled={players.length === 0}
-              >
-                {players.length === 0 ? 'Waiting for Players...' : `Start Quiz (${players.length} player${players.length !== 1 ? 's' : ''})`}
-              </Button>
-              {players.length === 0 && (
-                <p className="game-actions-hint">At least 1 player must join before starting.</p>
+              {!isHost && (
+                <p className="lobby-waiting" style={{ marginTop: '1.5rem' }}>
+                  Waiting for the host to start the quiz...
+                </p>
               )}
             </div>
-          )}
 
-          {!isHost && (
-            <p className="lobby-waiting" style={{ marginTop: '1.5rem' }}>
-              Waiting for the host to start the quiz...
-            </p>
-          )}
+          </div>
         </Card>
       </div>
     </div>
