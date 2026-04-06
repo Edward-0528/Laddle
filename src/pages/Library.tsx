@@ -42,6 +42,7 @@ const Library: React.FC = () => {
   const [bandFilter, setBandFilter]         = useState<GradeBand | ''>('');
   const [forkingId, setForkingId]           = useState<string | null>(null);
   const [forkedId, setForkedId]             = useState<string | null>(null); // just-forked quiz id
+  const [forkError, setForkError]           = useState('');
   const [previewQuiz, setPreviewQuiz]       = useState<Quiz | null>(null);
   const [isSeeding, setIsSeeding]           = useState(false);
 
@@ -79,19 +80,25 @@ const Library: React.FC = () => {
     }
   }
 
-  async function handleFork(quiz: Quiz) {    if (!user) {
+  async function handleFork(quiz: Quiz) {
+    if (!user) {
       navigate('/login');
       return;
     }
     setForkingId(quiz.id);
+    setForkError('');
     try {
       const newId = await forkQuizToUser(quiz, user.uid);
       setForkedId(newId);
-      // Auto-clear the success toast after 4 s
-      setTimeout(() => setForkedId(null), 4000);
-    } catch (err) {
-      console.error('[Ladle] Fork failed:', err);
-      setError('Failed to copy the quiz. Please try again.');
+      // Navigate to dashboard after a short delay so the user sees the success message
+      setTimeout(() => navigate('/dashboard'), 1800);
+    } catch (err: any) {
+      console.error('[Ladle] Fork failed:', err?.code, err?.message, err);
+      setForkError(
+        err?.code === 'permission-denied'
+          ? 'Permission denied. Make sure you are signed in and try again.'
+          : err?.message ?? 'Failed to copy the quiz. Please try again.'
+      );
     } finally {
       setForkingId(null);
     }
@@ -130,10 +137,15 @@ const Library: React.FC = () => {
         {/* -------- Success Toast -------- */}
         {forkedId && (
           <div className="library-toast">
-            Quiz copied to your library!{' '}
-            <button className="library-toast-link" onClick={() => navigate('/dashboard')}>
-              Go to Dashboard
-            </button>
+            Quiz copied to your library! Taking you to your dashboard...
+          </div>
+        )}
+
+        {/* -------- Fork Error Toast -------- */}
+        {forkError && (
+          <div className="library-fork-error">
+            <p>{forkError}</p>
+            <Button variant="ghost" size="sm" onClick={() => setForkError('')}>Dismiss</Button>
           </div>
         )}
 
