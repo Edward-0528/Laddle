@@ -449,7 +449,7 @@ const Game = () => {
                   <div
                     key={index}
                     className="game-choice game-choice-host"
-                    style={{ borderColor: color.base, background: color.light }}
+                    style={{ borderColor: color.base }}
                   >
                     <span className="choice-letter" style={{ background: color.base }}>{color.label}</span>
                     <span className="choice-text">{choice}</span>
