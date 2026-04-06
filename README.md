@@ -1,145 +1,163 @@
-# Laddle Quiz Game
+# Ladle - Interactive Quiz Platform
 
-A real-time quiz application similar to Kahoot, built with React, Socket.IO, and designed for $0 monthly cost using free tiers.
+A full-stack, real-time quiz application built with React, TypeScript, Socket.IO, and Firebase. Designed for hosting interactive quiz sessions in classrooms, team events, and educational settings.
 
 ## Features
 
-- 🎯 **Real-time Quiz Gameplay**: Host quizzes and have players join with simple game codes
-- ⏱️ **Timed Questions**: Customizable question duration with live countdown
-- 🏆 **Live Scoring**: Points awarded for correct answers with time-based bonuses
-- 📊 **Leaderboards**: Real-time score tracking and final results
-- 🎨 **Modern UI**: Clean, responsive design with smooth animations
-- 💰 **$0 Cost**: Designed to run on free tiers of hosting services
+- **Real-Time Multiplayer** - Players answer simultaneously with live scoring and leaderboards
+- **Quiz Builder** - Step-by-step wizard for creating and editing quizzes with multiple choice questions
+- **Persistent Storage** - Quizzes saved to Firestore for reuse across sessions
+- **User Authentication** - Email/password and Google sign-in via Firebase Auth
+- **Responsive Design** - Works seamlessly on phones, tablets, and desktops
+- **QR Code Joining** - Players can join via game code or shareable URL
+- **Code Splitting** - Lazy-loaded routes for fast initial page loads
 
-## Quick Start
+## Tech Stack
 
-### Prerequisites
-- Node.js 18+ installed
-- npm or yarn package manager
-
-### Installation
-
-1. **Clone and setup**:
-   ```bash
-   cd Laddle
-   npm install
-   cd server && npm install && cd ..
-   ```
-
-2. **Start development servers**:
-   ```bash
-   npm run dev
-   ```
-   This starts both the React client (port 5173) and Socket.IO server (port 3001).
-
-3. **Open your browser**:
-   - Go to `http://localhost:5173`
-   - Choose "Host a Quiz" to create questions and start a game
-   - Choose "Join Quiz" to enter a game code as a player
-
-## How to Play
-
-### For Hosts:
-1. Click "Host a Quiz"
-2. Add questions with multiple choice answers
-3. Set question duration (10-120 seconds)
-4. Create the game and share the 6-character code
-5. Start the quiz when players have joined
-
-### For Players:
-1. Click "Join Quiz"
-2. Enter the game code provided by the host
-3. Enter your name
-4. Wait for the host to start
-5. Answer questions as quickly as possible for bonus points!
-
-## Scoring System
-
-- **Base Points**: 1000 points for each correct answer
-- **Time Bonus**: Up to 1000 additional points based on answer speed
-- **Final Score**: Displayed on leaderboard at the end
-
-## Firebase Integration (Optional)
-
-To persist quiz data and use Firebase's free tier:
-
-1. Create a Firebase project at https://console.firebase.google.com
-2. Copy your config and create `.env.local` in the client folder:
-   ```
-   VITE_FIREBASE_API_KEY=your_api_key
-   VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
-   VITE_FIREBASE_PROJECT_ID=your_project_id
-   VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
-   VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-   VITE_FIREBASE_APP_ID=your_app_id
-   ```
-
-## Deployment ($0 Cost)
-
-### Client (Frontend)
-- **Vercel**: Deploy the `client` folder to Vercel's free tier
-- **Netlify**: Deploy the client build to Netlify's free tier
-- **GitHub Pages**: Use GitHub Actions for automatic deployment
-
-### Server (Backend)
-- **Railway**: Free tier with 500 hours/month
-- **Render**: Free tier with sleep after inactivity
-- **Fly.io**: Free tier with generous limits
-
-### Example Deployment Commands:
-
-```bash
-# Build client for production
-cd client && npm run build
-
-# Build server for production  
-cd server && npm run build
-
-# Start production server
-cd server && npm start
-```
+| Layer     | Technology                              |
+| --------- | --------------------------------------- |
+| Frontend  | React 19, TypeScript, Vite              |
+| Backend   | Express 5, Socket.IO 4.8, Node.js 18+  |
+| Database  | Firebase Firestore                      |
+| Auth      | Firebase Authentication                 |
+| Styling   | CSS custom properties, Poppins font     |
+| Hosting   | Firebase Hosting + Render               |
 
 ## Project Structure
 
 ```
-Laddle/
-├── client/                 # React frontend
-│   ├── src/
-│   │   ├── pages/         # Home, Host, Player, Game components
-│   │   ├── services/      # Socket.IO client setup
-│   │   └── App.tsx        # Main app with routing
-│   └── package.json
-├── server/                # Node.js backend
-│   ├── src/
-│   │   └── index.ts       # Express + Socket.IO server
-│   └── package.json
-└── package.json           # Root package with dev scripts
+src/
+  components/
+    layout/         Navbar, Footer
+    ui/             Button, Input, Card
+    ErrorBoundary   Global error handler
+    ProtectedRoute  Auth-gated route wrapper
+  context/
+    AuthContext      Firebase auth provider
+  pages/
+    Landing          Public home page
+    Login            Sign-in page
+    Register         Sign-up page
+    Dashboard        Saved quizzes grid
+    QuizBuilder      Create/edit quiz wizard
+    JoinGame         Enter game code to join
+    Game             Lobby, questions, leaderboard
+  services/
+    firebase         Firebase initialization
+    socket           Socket.IO client
+    quizzes          Firestore CRUD for quizzes
+  styles/
+    variables.css    Design tokens
+    globals.css      Base styles and resets
+  types/
+    quiz.ts          Quiz and question types
+    game.ts          Game state types
+    user.ts          User profile and plan types
+server/
+  src/
+    index.ts         Express + Socket.IO server
+    validators/      Zod schemas for event payloads
+    middleware/      Rate limiting
+    services/        Game state management
+    utils/           Structured logger
 ```
 
-## Development Scripts
+## Getting Started
+
+### Prerequisites
+
+- Node.js 18 or later
+- npm package manager
+- Firebase project with Firestore and Authentication enabled
+
+### Installation
 
 ```bash
-npm run dev          # Start both client and server
-npm run dev:client   # Start only React client
-npm run dev:server   # Start only Node.js server
-npm run build        # Build both for production
+git clone https://github.com/Edward-0528/Laddle.git
+cd Laddle
+npm install
+cd server && npm install && cd ..
 ```
 
-## Tech Stack
+### Environment Variables
 
-- **Frontend**: React 18, TypeScript, Vite, React Router
-- **Backend**: Node.js, Express, Socket.IO, TypeScript
-- **Real-time**: WebSocket connections via Socket.IO
-- **Styling**: CSS with modern glassmorphism design
-- **Optional**: Firebase Firestore for data persistence
+Create a `.env` file in the project root:
 
-## Free Tier Limits
+```
+VITE_FIREBASE_API_KEY=your_api_key
+VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your_project_id
+VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+VITE_FIREBASE_APP_ID=your_app_id
+VITE_SOCKET_URL=http://localhost:3001
+```
 
-- **Vercel**: 100GB bandwidth, unlimited sites
-- **Railway**: 500 execution hours/month, 1GB RAM
-- **Firebase**: 1GB storage, 10GB/month transfer
-- **Render**: 750 hours/month, sleeps after 15min inactivity
+Create a `.env` file in the `server/` directory:
 
-Perfect for small schools and organizations! 🎓
+```
+PORT=3001
+ALLOWED_ORIGINS=http://localhost:5173
+NODE_ENV=development
+```
 
-Learn more about the recommended Project Setup and IDE Support in the [Vue Docs TypeScript Guide](https://vuejs.org/guide/typescript/overview.html#project-setup).
+### Development
+
+```bash
+npm run dev
+```
+
+This starts both the Vite dev server (port 5173) and the Express/Socket.IO server (port 3001) concurrently.
+
+### Production Build
+
+```bash
+npm run build
+```
+
+Outputs the client bundle to `dist/` and the server bundle to `server/dist/`.
+
+## Architecture
+
+### Client-Server Communication
+
+All game events use Socket.IO with Zod validation on the server:
+
+| Event              | Direction      | Description                       |
+| ------------------ | -------------- | --------------------------------- |
+| `host:create`      | Client->Server | Create a new game with questions  |
+| `host:start`       | Client->Server | Start the quiz                    |
+| `player:join`      | Client->Server | Join a game by code               |
+| `player:answer`    | Client->Server | Submit an answer                  |
+| `game:role`        | Server->Client | Assign host or player role        |
+| `lobby:update`     | Server->Client | Updated player list               |
+| `game:question`    | Server->Client | Next question data                |
+| `game:question:end`| Server->Client | Correct answer reveal             |
+| `game:results`     | Server->Client | Final leaderboard                 |
+
+### Security
+
+- Helmet security headers on all Express responses
+- CORS restricted to configured origins
+- Zod schema validation on every socket event
+- Rate limiting per socket per event type
+- HTML sanitization on user-submitted text
+- Server-side host verification (no client-side role assignment)
+- Environment variables for all sensitive configuration
+
+## Deployment
+
+### Firebase Hosting (Client)
+
+```bash
+npm run build
+npx firebase deploy --only hosting
+```
+
+### Render (Server)
+
+The server deploys automatically from the `server/` directory via `render.yaml`.
+
+## License
+
+MIT

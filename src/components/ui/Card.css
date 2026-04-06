@@ -1,0 +1,77 @@
+/* ---------------------------------------------------------------------------
+   Card Component Styles
+   --------------------------------------------------------------------------- */
+
+.card {
+  border-radius: var(--radius-lg);
+  transition: transform var(--transition-base), box-shadow var(--transition-base);
+}
+
+/* ------- Padding ------- */
+
+.card-pad-sm {
+  padding: var(--space-4);
+}
+
+.card-pad-md {
+  padding: var(--space-6);
+}
+
+.card-pad-lg {
+  padding: var(--space-8);
+}
+
+/* ------- Variants ------- */
+
+.card-default {
+  background: var(--color-bg-white);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--color-border-light);
+}
+
+.card-elevated {
+  background: var(--color-bg-white);
+  box-shadow: var(--shadow-lg);
+  border: none;
+}
+
+.card-outlined {
+  background: var(--color-bg-white);
+  border: 2px solid var(--color-border);
+  box-shadow: none;
+}
+
+.card-glass {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 32px rgba(31, 38, 135, 0.2);
+  color: var(--color-text-white);
+}
+
+/* ------- Clickable ------- */
+
+.card-clickable {
+  cursor: pointer;
+}
+
+.card-clickable:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-xl);
+}
+
+.card-clickable:active {
+  transform: translateY(-2px);
+}
+
+/* ------- Responsive ------- */
+
+@media (max-width: 768px) {
+  .card-pad-lg {
+    padding: var(--space-6);
+  }
+
+  .card-pad-md {
+    padding: var(--space-4);
+  }
+}

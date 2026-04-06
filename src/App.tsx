@@ -1,23 +1,76 @@
-import { Routes, Route } from 'react-router-dom'
-import Home from './pages/Home'
-import Host from './pages/Host'
-import Player from './pages/Player'
-import Game from './pages/Game'
-import TestPage from './pages/TestPage'
-import './App.css'
+// ---------------------------------------------------------------------------
+// App Router
+// Defines all application routes and wraps them with the shared layout
+// (Navbar + Footer). Protected routes require authentication. Heavy pages
+// are code-split with React.lazy for better initial load performance.
+// ---------------------------------------------------------------------------
+
+import { Suspense, lazy } from 'react';
+import { Routes, Route } from 'react-router-dom';
+import Navbar from './components/layout/Navbar';
+import Footer from './components/layout/Footer';
+import ErrorBoundary from './components/ErrorBoundary';
+import ProtectedRoute from './components/ProtectedRoute';
+import './components/ErrorBoundary.css';
+import './App.css';
+
+// Lazy-loaded pages for code splitting
+const Landing = lazy(() => import('./pages/Landing'));
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const QuizBuilder = lazy(() => import('./pages/QuizBuilder'));
+const JoinGame = lazy(() => import('./pages/JoinGame'));
+const Game = lazy(() => import('./pages/Game'));
+
+function PageLoader() {
+  return (
+    <div className="protected-loading">
+      <div className="loading-spinner" />
+      <p>Loading...</p>
+    </div>
+  );
+}
 
 function App() {
   return (
-    <div className="App">
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/host" element={<Host />} />
-        <Route path="/player" element={<Player />} />
-        <Route path="/game/:code" element={<Game />} />
-        <Route path="/test" element={<TestPage />} />
-      </Routes>
-    </div>
-  )
+    <ErrorBoundary>
+      <div className="app">
+        <Navbar />
+        <main className="app-main">
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              {/* Public routes */}
+              <Route path="/" element={<Landing />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              <Route path="/join" element={<JoinGame />} />
+              <Route path="/game/:code" element={<Game />} />
+
+              {/* Protected routes */}
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute>
+                    <Dashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/create"
+                element={
+                  <ProtectedRoute>
+                    <QuizBuilder />
+                  </ProtectedRoute>
+                }
+              />
+            </Routes>
+          </Suspense>
+        </main>
+        <Footer />
+      </div>
+    </ErrorBoundary>
+  );
 }
 
-export default App
+export default App;

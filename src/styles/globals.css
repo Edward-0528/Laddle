@@ -1,0 +1,138 @@
+/* ---------------------------------------------------------------------------
+   Ladle Global Styles
+   Base styles, resets, and utility classes applied across the application.
+   --------------------------------------------------------------------------- */
+
+@import './variables.css';
+
+/* ------- Reset and Base ------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-white);
+  min-height: 100vh;
+  text-rendering: optimizeLegibility;
+}
+
+p {
+  line-height: var(--line-height-relaxed);
+  margin-bottom: 0.75em;
+}
+
+p:last-child {
+  margin-bottom: 0;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+a:hover {
+  color: var(--color-primary-dark);
+}
+
+button {
+  font-family: var(--font-family);
+  cursor: pointer;
+}
+
+input,
+textarea,
+select {
+  font-family: var(--font-family);
+}
+
+/* ------- Typography Utilities ------- */
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+  color: var(--color-text-primary);
+  letter-spacing: var(--letter-spacing-tight);
+}
+
+h1 { font-size: var(--font-size-4xl); }
+h2 { font-size: var(--font-size-3xl); }
+h3 { font-size: var(--font-size-2xl); }
+h4 { font-size: var(--font-size-xl); }
+
+small {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+/* ------- Container ------- */
+
+.container {
+  width: 100%;
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 0 var(--space-6);
+}
+
+/* ------- Section ------- */
+
+.section {
+  padding: var(--space-20) 0;
+}
+
+.section-light {
+  background-color: var(--color-bg-light);
+}
+
+/* ------- Responsive Breakpoints ------- */
+/* Mobile: default
+   Tablet: 768px
+   Desktop: 1024px
+   Wide: 1280px */
+
+@media (max-width: 768px) {
+  :root {
+    --font-size-hero: 2rem;
+    --font-size-4xl: 2rem;
+    --font-size-3xl: 1.5rem;
+    --font-size-2xl: 1.25rem;
+    --nav-height: 64px;
+  }
+
+  .container {
+    padding: 0 var(--space-4);
+  }
+
+  .section {
+    padding: var(--space-12) 0;
+  }
+}

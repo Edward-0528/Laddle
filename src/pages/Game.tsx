@@ -1,243 +1,324 @@
-import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
-import { socket } from '../services/socket'
+// ---------------------------------------------------------------------------
+// Game Page
+// Handles all game states: lobby, active question, question results, and
+// final leaderboard. Uses server-emitted "game:role" event to determine
+// whether the current user is the host (no more URL query parameter).
+// ---------------------------------------------------------------------------
+
+import { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
+import { socket } from '../services/socket';
+import Button from '../components/ui/Button';
+import Card from '../components/ui/Card';
+import './Game.css';
+
+// ---------------------------------------------------------------------------
+// Interfaces
+// ---------------------------------------------------------------------------
 
 interface Player {
-  id: string
-  name: string
-  score: number
+  id: string;
+  name: string;
+  score: number;
 }
 
 interface Question {
-  id: string
-  text: string
-  choices: string[]
-  durationSec: number
+  id: string;
+  text: string;
+  choices: string[];
+  durationSec: number;
 }
 
 interface GameData {
-  index: number
-  total: number
-  endsAt: number
-  q: Question
+  index: number;
+  total: number;
+  endsAt: number;
+  q: Question;
 }
 
 interface LeaderboardEntry {
-  rank: number
-  name: string
-  score: number
+  rank: number;
+  name: string;
+  score: number;
 }
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 const Game = () => {
-  const { code } = useParams<{ code: string }>()
-  const [gameState, setGameState] = useState<'lobby' | 'question' | 'results' | 'ended'>('lobby')
-  const [players, setPlayers] = useState<Player[]>([])
-  const [currentQuestion, setCurrentQuestion] = useState<GameData | null>(null)
-  const [timeLeft, setTimeLeft] = useState(0)
-  const [selectedChoice, setSelectedChoice] = useState<number | null>(null)
-  const [hasAnswered, setHasAnswered] = useState(false)
-  const [correctAnswer, setCorrectAnswer] = useState<number | null>(null)
-  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
-  const [isHost, setIsHost] = useState(false)
+  const { code } = useParams<{ code: string }>();
+  const [gameState, setGameState] = useState<'lobby' | 'question' | 'reveal' | 'results' | 'ended'>('lobby');
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [currentQuestion, setCurrentQuestion] = useState<GameData | null>(null);
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [selectedChoice, setSelectedChoice] = useState<number | null>(null);
+  const [hasAnswered, setHasAnswered] = useState(false);
+  const [correctAnswer, setCorrectAnswer] = useState<number | null>(null);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [isHost, setIsHost] = useState(false);
+
+  // Build the join URL for display and future QR code
+  const joinUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/join?code=${code}`
+    : '';
 
   useEffect(() => {
-    // Listen for game events
+    // Server tells us our role when we connect to a game
+    socket.on('game:role', (data: { role: 'host' | 'player' }) => {
+      setIsHost(data.role === 'host');
+      console.log('[Ladle] Assigned role:', data.role);
+    });
+
     socket.on('lobby:update', (playerList: Player[]) => {
-      setPlayers(playerList)
-    })
+      setPlayers(playerList);
+    });
 
     socket.on('game:question', (data: GameData) => {
-      setGameState('question')
-      setCurrentQuestion(data)
-      setSelectedChoice(null)
-      setHasAnswered(false)
-      setCorrectAnswer(null)
-      setTimeLeft(data.q.durationSec)
-    })
+      setGameState('question');
+      setCurrentQuestion(data);
+      setSelectedChoice(null);
+      setHasAnswered(false);
+      setCorrectAnswer(null);
+      setTimeLeft(data.q.durationSec);
+    });
 
     socket.on('game:question:end', (data: { correctIndex: number }) => {
-      setCorrectAnswer(data.correctIndex)
+      setCorrectAnswer(data.correctIndex);
+      setGameState('reveal');
+      // Auto-advance from reveal state after 3 seconds
       setTimeout(() => {
-        setGameState('lobby')
-      }, 3000)
-    })
+        setGameState('lobby');
+      }, 3000);
+    });
 
     socket.on('game:results', (data: LeaderboardEntry[]) => {
-      setGameState('results')
-      setLeaderboard(data)
-    })
+      setGameState('results');
+      setLeaderboard(data);
+    });
 
     socket.on('game:ended', () => {
-      setGameState('ended')
-    })
+      setGameState('ended');
+    });
 
     socket.on('player:answer:ack', () => {
-      setHasAnswered(true)
-    })
+      setHasAnswered(true);
+    });
 
-    // Check if user is host (simplified check)
-    const urlParams = new URLSearchParams(window.location.search)
-    setIsHost(urlParams.get('host') === 'true')
+    // Fallback: check URL param for backwards compatibility
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('host') === 'true') {
+      setIsHost(true);
+    }
 
     return () => {
-      socket.off('lobby:update')
-      socket.off('game:question')
-      socket.off('game:question:end')
-      socket.off('game:results')
-      socket.off('game:ended')
-      socket.off('player:answer:ack')
-    }
-  }, [])
+      socket.off('game:role');
+      socket.off('lobby:update');
+      socket.off('game:question');
+      socket.off('game:question:end');
+      socket.off('game:results');
+      socket.off('game:ended');
+      socket.off('player:answer:ack');
+    };
+  }, []);
 
+  // Countdown timer
   useEffect(() => {
     if (gameState === 'question' && timeLeft > 0) {
-      const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000)
-      return () => clearTimeout(timer)
+      const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
+      return () => clearTimeout(timer);
     }
-  }, [gameState, timeLeft])
+  }, [gameState, timeLeft]);
 
-  const startGame = () => {
-    socket.emit('host:start', { code })
+  function startGame() {
+    console.log('[Ladle] Starting game:', code);
+    socket.emit('host:start', { code });
   }
 
-  const selectChoice = (choiceIndex: number) => {
-    if (hasAnswered || timeLeft <= 0) return
-    setSelectedChoice(choiceIndex)
-    socket.emit('player:answer', { code, choiceIndex })
+  function selectChoice(choiceIndex: number) {
+    if (hasAnswered || timeLeft <= 0) return;
+    setSelectedChoice(choiceIndex);
+    socket.emit('player:answer', { code, choiceIndex });
   }
 
-  const getChoiceClass = (index: number) => {
-    let className = 'choice-button'
-    if (selectedChoice === index) className += ' selected'
+  function getChoiceClass(index: number): string {
+    let cls = 'game-choice';
+    if (selectedChoice === index) cls += ' selected';
     if (correctAnswer !== null) {
-      if (index === correctAnswer) className += ' correct'
-      else if (selectedChoice === index) className += ' incorrect'
+      if (index === correctAnswer) cls += ' correct';
+      else if (selectedChoice === index) cls += ' incorrect';
     }
-    return className
+    return cls;
   }
 
+  // -------- Ended State --------
   if (gameState === 'ended') {
     return (
-      <div className="card">
-        <h2>🎮 Game Ended</h2>
-        <p>Thanks for playing!</p>
+      <div className="game-page">
+        <div className="container game-container">
+          <Card variant="elevated" padding="lg" className="game-card">
+            <h2 className="game-heading">Game Over</h2>
+            <p className="game-subheading">Thanks for playing!</p>
+            {leaderboard.length > 0 && (
+              <div className="leaderboard">
+                <h3 className="leaderboard-title">Final Leaderboard</h3>
+                {leaderboard.map((entry) => (
+                  <div key={entry.rank} className="leaderboard-row">
+                    <span className="leaderboard-rank">#{entry.rank}</span>
+                    <span className="leaderboard-name">{entry.name}</span>
+                    <span className="leaderboard-score">{entry.score} pts</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="game-actions">
+              <Button variant="primary" size="lg" onClick={() => window.location.href = '/'}>
+                Back to Home
+              </Button>
+            </div>
+          </Card>
+        </div>
       </div>
-    )
+    );
   }
 
+  // -------- Results State --------
   if (gameState === 'results') {
     return (
-      <div className="card">
-        <h2>🏆 Final Results</h2>
-        <div className="leaderboard">
-          {leaderboard.map((entry) => (
-            <div key={entry.rank} className="leaderboard-item">
-              <span className="rank">#{entry.rank}</span>
-              <span>{entry.name}</span>
-              <span className="score">{entry.score} pts</span>
+      <div className="game-page">
+        <div className="container game-container">
+          <Card variant="elevated" padding="lg" className="game-card">
+            <h2 className="game-heading">Final Results</h2>
+            <div className="leaderboard">
+              {leaderboard.map((entry) => (
+                <div key={entry.rank} className={`leaderboard-row ${entry.rank <= 3 ? 'top-three' : ''}`}>
+                  <span className="leaderboard-rank">#{entry.rank}</span>
+                  <span className="leaderboard-name">{entry.name}</span>
+                  <span className="leaderboard-score">{entry.score} pts</span>
+                </div>
+              ))}
             </div>
-          ))}
+          </Card>
         </div>
       </div>
-    )
+    );
   }
 
-  if (gameState === 'question' && currentQuestion) {
+  // -------- Question State --------
+  if ((gameState === 'question' || gameState === 'reveal') && currentQuestion) {
     return (
-      <div className="card" style={{ maxWidth: '600px', width: '100%' }}>
-        <div className="timer">{timeLeft}s</div>
-        <h3>Question {currentQuestion.index + 1} of {currentQuestion.total}</h3>
-        <div className="quiz-question">
-          <h2>{currentQuestion.q.text}</h2>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '2rem' }}>
-            {currentQuestion.q.choices.map((choice, index) => (
-              <button
-                key={index}
-                className={getChoiceClass(index)}
-                onClick={() => selectChoice(index)}
-                disabled={hasAnswered || timeLeft <= 0}
-              >
-                {choice}
-              </button>
-            ))}
-          </div>
-          {hasAnswered && (
-            <div style={{ marginTop: '1rem', color: '#4ecdc4' }}>
-              ✅ Answer submitted!
+      <div className="game-page">
+        <div className="container game-container">
+          <Card variant="elevated" padding="lg" className="game-card game-card-wide">
+            <div className="question-header">
+              <span className="question-progress">
+                Question {currentQuestion.index + 1} of {currentQuestion.total}
+              </span>
+              <span className={`question-timer ${timeLeft <= 5 ? 'timer-warning' : ''}`}>
+                {timeLeft}s
+              </span>
+            </div>
+
+            <h2 className="question-text">{currentQuestion.q.text}</h2>
+
+            <div className="choices-grid">
+              {currentQuestion.q.choices.map((choice, index) => (
+                <button
+                  key={index}
+                  className={getChoiceClass(index)}
+                  onClick={() => selectChoice(index)}
+                  disabled={hasAnswered || timeLeft <= 0}
+                >
+                  <span className="choice-letter">
+                    {String.fromCharCode(65 + index)}
+                  </span>
+                  <span className="choice-text">{choice}</span>
+                </button>
+              ))}
+            </div>
+
+            {hasAnswered && gameState === 'question' && (
+              <p className="answer-submitted">Answer submitted. Waiting for results...</p>
+            )}
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // -------- Lobby State --------
+  return (
+    <div className="game-page">
+      <div className="container game-container">
+        <Card variant="elevated" padding="lg" className="game-card">
+          <h2 className="game-heading">Game Lobby</h2>
+
+          {isHost && (
+            <div className="host-badge">
+              You are the Host
             </div>
           )}
-        </div>
-      </div>
-    )
-  }
 
-  // Lobby state
-  return (
-    <div className="card">
-      <h2>🎯 Game Lobby</h2>
-      {isHost && (
-        <div style={{ 
-          background: 'rgba(255, 215, 0, 0.2)', 
-          padding: '1rem', 
-          borderRadius: '10px', 
-          marginBottom: '1rem',
-          border: '2px solid rgba(255, 215, 0, 0.5)'
-        }}>
-          👑 <strong>You are the Host</strong>
-        </div>
-      )}
-      <div style={{ fontSize: '2rem', fontWeight: 'bold', margin: '1rem 0' }}>
-        Code: {code}
-      </div>
-      
-      <div className="leaderboard">
-        <h3>Players ({players.length})</h3>
-        {players.length === 0 ? (
-          <div style={{ padding: '2rem', opacity: 0.7, fontStyle: 'italic' }}>
-            No players have joined yet. Share the game code!
+          <div className="game-code-display">
+            <span className="game-code-label">Game Code</span>
+            <span className="game-code-value">{code}</span>
           </div>
-        ) : (
-          players.map((player) => (
-            <div key={player.id} className="leaderboard-item">
-              <span>{player.name}</span>
-              <span className="score">{player.score} pts</span>
+
+          <p className="lobby-join-url">
+            Players can join at: <strong>{joinUrl}</strong>
+          </p>
+
+          <div className="leaderboard">
+            <h3 className="leaderboard-title">
+              Players ({players.length})
+            </h3>
+            {players.length === 0 ? (
+              <p className="lobby-waiting">
+                No players have joined yet. Share the game code above.
+              </p>
+            ) : (
+              players.map((player) => (
+                <div key={player.id} className="leaderboard-row">
+                  <span className="leaderboard-name">{player.name}</span>
+                  <span className="leaderboard-score">{player.score} pts</span>
+                </div>
+              ))
+            )}
+          </div>
+
+          {isHost && (
+            <div className="game-actions">
+              <Button
+                variant="primary"
+                size="lg"
+                fullWidth
+                onClick={startGame}
+                disabled={players.length === 0}
+              >
+                {players.length === 0 ? 'Waiting for Players...' : 'Start Quiz'}
+              </Button>
+              {players.length === 0 && (
+                <p className="game-actions-hint">
+                  At least 1 player must join before starting.
+                </p>
+              )}
+              {players.length > 0 && (
+                <p className="game-actions-hint">
+                  Ready to start with {players.length} player{players.length !== 1 ? 's' : ''}.
+                </p>
+              )}
             </div>
-          ))
-        )}
-      </div>
-      
-      {isHost && (
-        <div style={{ marginTop: '2rem' }}>
-          <button 
-            className="button" 
-            onClick={startGame}
-            disabled={players.length === 0}
-            style={{ 
-              fontSize: '1.2rem',
-              padding: '1rem 2rem',
-              background: players.length > 0 
-                ? 'linear-gradient(45deg, #4ecdc4, #44a08d)' 
-                : 'linear-gradient(45deg, #666, #999)'
-            }}
-          >
-            {players.length === 0 ? '⏳ Waiting for Players...' : '🚀 Start Quiz'}
-          </button>
-          <div style={{ marginTop: '1rem', fontSize: '0.9rem', opacity: 0.8 }}>
-            {players.length === 0 
-              ? 'At least 1 player must join before starting'
-              : `Ready to start with ${players.length} player${players.length > 1 ? 's' : ''}!`
-            }
-          </div>
-        </div>
-      )}
-      
-      {!isHost && (
-        <div style={{ marginTop: '2rem', opacity: 0.8 }}>
-          Waiting for host to start the quiz...
-        </div>
-      )}
-    </div>
-  )
-}
+          )}
 
-export default Game
+          {!isHost && (
+            <p className="lobby-waiting" style={{ marginTop: '1.5rem' }}>
+              Waiting for the host to start the quiz...
+            </p>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+};
+
+export default Game;

@@ -1,0 +1,60 @@
+/* ---------------------------------------------------------------------------
+   Join Game Page Styles
+   --------------------------------------------------------------------------- */
+
+.join-game {
+  padding: 4rem 0;
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+}
+
+.join-game-inner {
+  display: flex;
+  justify-content: center;
+}
+
+.join-card {
+  max-width: 460px;
+  width: 100%;
+  text-align: center;
+}
+
+.join-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin: 0 0 0.5rem;
+}
+
+.join-subtitle {
+  font-size: 1rem;
+  color: var(--color-text-secondary);
+  margin: 0 0 2rem;
+  line-height: 1.5;
+}
+
+.join-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  text-align: left;
+  margin-bottom: 1.5rem;
+}
+
+.join-error {
+  font-size: 0.875rem;
+  color: var(--color-error);
+  background: #fef2f2;
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 1rem;
+  text-align: center;
+}
+
+.join-hint {
+  font-size: 0.813rem;
+  color: var(--color-text-tertiary);
+  margin: 0;
+  line-height: 1.5;
+}

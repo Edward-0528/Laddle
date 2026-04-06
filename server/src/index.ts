@@ -1,321 +1,366 @@
+// ---------------------------------------------------------------------------
+// Ladle Quiz Server
+// Real-time quiz game server built with Express and Socket.IO.
+//
+// Security measures implemented:
+//   - Helmet for HTTP security headers
+//   - CORS restricted to configured origins
+//   - Zod schema validation on all incoming payloads
+//   - Per-socket rate limiting on all events
+//   - Input sanitization (HTML tag stripping)
+//   - No debug endpoints exposed in production
+//   - Host identity verified server-side (not via URL parameters)
+//   - Maximum game and player limits enforced
+// ---------------------------------------------------------------------------
+
 import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
+import helmet from 'helmet';
 import dotenv from 'dotenv';
+
+import { logger } from './utils/logger';
+import {
+  CreateGameSchema,
+  JoinGameSchema,
+  StartGameSchema,
+  AnswerSchema,
+} from './validators/schemas';
+import {
+  checkRateLimit,
+  clearRateLimits,
+  RATE_LIMITS,
+} from './middleware/rateLimit';
+import {
+  createGame,
+  getGame,
+  addPlayer,
+  getPlayerList,
+  isGameHost,
+  advanceToNextQuestion,
+  recordAnswer,
+  finalizeQuestion,
+  handleDisconnect,
+  getActiveGameCount,
+  cleanupIdleGames,
+} from './services/gameManager';
+
+// ---------------------------------------------------------------------------
+// Environment Configuration
+// ---------------------------------------------------------------------------
 
 dotenv.config();
 
+const PORT = Number(process.env.PORT || 3001);
+const NODE_ENV = process.env.NODE_ENV || 'development';
+
+/**
+ * Builds the list of allowed CORS origins from environment variables.
+ * In development, localhost origins are included automatically.
+ */
+function getAllowedOrigins(): string[] {
+  const origins: string[] = [
+    'http://localhost:5173',
+    'http://localhost:5174',
+  ];
+
+  if (process.env.CLIENT_ORIGIN) {
+    origins.push(process.env.CLIENT_ORIGIN);
+  }
+
+  if (process.env.ADDITIONAL_ORIGINS) {
+    const additional = process.env.ADDITIONAL_ORIGINS.split(',').map((o) => o.trim());
+    origins.push(...additional);
+  }
+
+  return origins;
+}
+
+const allowedOrigins = getAllowedOrigins();
+
+// ---------------------------------------------------------------------------
+// Express Application Setup
+// ---------------------------------------------------------------------------
+
 const app = express();
-app.use(cors());
+
+// Security headers
+app.use(helmet());
+
+// CORS configuration
+app.use(
+  cors({
+    origin: allowedOrigins,
+    methods: ['GET', 'POST'],
+  })
+);
+
 app.use(express.json());
 
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: [
-      'http://localhost:5173',
-      'http://localhost:5174',
-      process.env.CLIENT_ORIGIN || 'http://localhost:5173',
-      'https://ladle-3c896.web.app',
-      'https://ladle-3c896.firebaseapp.com',
-      'https://laddle-server.onrender.com'
-    ],
-    methods: ['GET', 'POST']
-  }
-});
+// ---------------------------------------------------------------------------
+// HTTP Routes
+// Only health and ping endpoints are exposed. No debug endpoints in
+// production to prevent information leakage.
+// ---------------------------------------------------------------------------
 
-// In-memory game store for $0 infrastructure cost
-// For production scaling, consider moving to Redis or a database
-interface Player {
-  id: string;
-  name: string;
-  score: number;
-}
-
-interface Question {
-  id: string;
-  text: string;
-  choices: string[];
-  answerIndex: number; // 0-based index of correct answer
-  durationSec: number;
-}
-
-interface Game {
-  code: string;
-  hostSocketId: string;
-  players: Record<string, Player>; // keyed by socketId
-  questions: Question[];
-  state: 'lobby' | 'question' | 'results' | 'ended';
-  currentQIndex: number;
-  questionEndsAt?: number; // timestamp when current question ends
-  answers: Record<string, { qid: string; choiceIndex: number; answeredAt: number }>; // by socketId
-}
-
-const games: Record<string, Game> = {};
-
-function generateGameCode(length = 6): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excluded similar chars
-  let code = '';
-  for (let i = 0; i < length; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return code;
-}
-
-io.on('connection', (socket) => {
-  console.log(`User connected: ${socket.id}`);
-
-  // Test endpoint to verify connection
-  socket.on('test:ping', (callback) => {
-    console.log(`Test ping from ${socket.id}`);
-    callback({ success: true, message: 'Server is working!', socketId: socket.id });
-  });
-
-  // Host creates a new game
-  socket.on('host:create', (payload: { questions: Question[] }, callback: (data: { code: string }) => void) => {
-    const code = generateGameCode();
-    games[code] = {
-      code,
-      hostSocketId: socket.id,
-      players: {},
-      questions: payload.questions,
-      state: 'lobby',
-      currentQIndex: -1,
-      answers: {}
-    };
-    
-    socket.join(code);
-    console.log(`Game created with code: ${code}`);
-    callback({ code });
-  });
-
-  // Player joins an existing game
-  socket.on('player:join', (payload: { code: string; name: string }, callback: (data: { ok: boolean; reason?: string }) => void) => {
-    console.log(`🎯 Player join attempt: ${payload.name} -> ${payload.code}`);
-    console.log(`📋 Available games:`, Object.keys(games));
-    console.log(`🔍 Looking for game ${payload.code}:`, games[payload.code] ? 'EXISTS' : 'NOT FOUND');
-    
-    const game = games[payload.code];
-    if (!game) {
-      console.log(`❌ Game ${payload.code} not found. Available: [${Object.keys(games).join(', ')}]`);
-      return callback({ ok: false, reason: `Game ${payload.code} not found. Available games: ${Object.keys(games).length}` });
-    }
-    if (game.state !== 'lobby') {
-      console.log(`❌ Game ${payload.code} is not in lobby state: ${game.state}`);
-      return callback({ ok: false, reason: 'Game already started' });
-    }
-    
-    game.players[socket.id] = {
-      id: socket.id,
-      name: payload.name,
-      score: 0
-    };
-    
-    socket.join(payload.code);
-    io.to(payload.code).emit('lobby:update', Object.values(game.players));
-    console.log(`Player ${payload.name} joined game ${payload.code}`);
-    callback({ ok: true });
-  });
-
-  // Host starts the quiz
-  socket.on('host:start', (payload: { code: string }) => {
-    const game = games[payload.code];
-    if (!game || game.hostSocketId !== socket.id) return;
-    
-    console.log(`Starting game ${payload.code}`);
-    nextQuestion(game);
-  });
-
-  // Player submits an answer
-  socket.on('player:answer', (payload: { code: string; choiceIndex: number }) => {
-    const game = games[payload.code];
-    if (!game || game.state !== 'question') return;
-    if (!(socket.id in game.players)) return;
-    
-    const currentQ = game.questions[game.currentQIndex];
-    const now = Date.now();
-    
-    // Check if question time has expired
-    if (now > (game.questionEndsAt || 0)) return;
-    
-    // Only allow one answer per question
-    if (!game.answers[socket.id]) {
-      game.answers[socket.id] = {
-        qid: currentQ.id,
-        choiceIndex: payload.choiceIndex,
-        answeredAt: now
-      };
-      
-      // Send acknowledgment to player
-      io.to(socket.id).emit('player:answer:ack');
-      console.log(`Player ${game.players[socket.id].name} answered question ${game.currentQIndex}`);
-    }
-  });
-
-  socket.on('disconnect', () => {
-    console.log(`User disconnected: ${socket.id}`);
-    
-    // Find and handle player/host leaving
-    const game = Object.values(games).find(g => 
-      g.players[socket.id] || g.hostSocketId === socket.id
-    );
-    
-    if (!game) return;
-    
-    if (game.hostSocketId === socket.id) {
-      // Host left - end the game
-      io.to(game.code).emit('game:ended');
-      delete games[game.code];
-      console.log(`Game ${game.code} ended - host disconnected`);
-    } else if (game.players[socket.id]) {
-      // Player left - remove from game
-      delete game.players[socket.id];
-      delete game.answers[socket.id];
-      io.to(game.code).emit('lobby:update', Object.values(game.players));
-      console.log(`Player left game ${game.code}`);
-    }
-  });
-});
-
-function nextQuestion(game: Game) {
-  game.currentQIndex += 1;
-  game.answers = {}; // Reset answers for new question
-  
-  if (game.currentQIndex >= game.questions.length) {
-    // Quiz finished - show results
-    game.state = 'results';
-    const leaderboard = Object.values(game.players)
-      .sort((a, b) => b.score - a.score)
-      .map((player, index) => ({
-        rank: index + 1,
-        name: player.name,
-        score: player.score
-      }));
-    
-    io.to(game.code).emit('game:results', leaderboard);
-    console.log(`Game ${game.code} finished`);
-    return;
-  }
-  
-  const question = game.questions[game.currentQIndex];
-  game.state = 'question';
-  game.questionEndsAt = Date.now() + question.durationSec * 1000;
-  
-  // Send question to all players (without the correct answer)
-  io.to(game.code).emit('game:question', {
-    index: game.currentQIndex,
-    total: game.questions.length,
-    endsAt: game.questionEndsAt,
-    q: {
-      id: question.id,
-      text: question.text,
-      choices: question.choices,
-      durationSec: question.durationSec
-    }
-  });
-  
-  console.log(`Question ${game.currentQIndex + 1} started for game ${game.code}`);
-  
-  // Auto-close question when time expires
-  setTimeout(() => {
-    finalizeQuestion(game);
-  }, question.durationSec * 1000 + 500); // Small buffer for network delay
-}
-
-function finalizeQuestion(game: Game) {
-  if (game.state !== 'question') return;
-  
-  const question = game.questions[game.currentQIndex];
-  const maxTimeBonus = 1000; // Maximum bonus points for quick answers
-  const questionDurationMs = question.durationSec * 1000;
-  
-  // Calculate scores
-  for (const [playerId, answer] of Object.entries(game.answers)) {
-    const player = game.players[playerId];
-    if (!player) continue;
-    
-    const isCorrect = answer.choiceIndex === question.answerIndex;
-    if (isCorrect) {
-      // Base points + time bonus
-      const timeRemaining = Math.max(0, (game.questionEndsAt || 0) - answer.answeredAt);
-      const timeBonus = Math.round((timeRemaining / questionDurationMs) * maxTimeBonus);
-      player.score += 1000 + timeBonus; // 1000 base + up to 1000 bonus
-    }
-  }
-  
-  // Show correct answer to all players
-  io.to(game.code).emit('game:question:end', {
-    correctIndex: question.answerIndex
-  });
-  
-  console.log(`Question ${game.currentQIndex + 1} ended for game ${game.code}`);
-  
-  // Move to next question after showing results
-  setTimeout(() => {
-    nextQuestion(game);
-  }, 3000); // 3 second pause between questions
-}
-
-// Root endpoint
-app.get('/', (req, res) => {
+/**
+ * Root endpoint. Returns a simple status message confirming the server
+ * is running. Does not expose internal state.
+ */
+app.get('/', (_req, res) => {
   res.json({
-    message: '🎮 Laddle Quiz Server',
+    service: 'Ladle Quiz Server',
     status: 'running',
-    version: '1.0.0',
-    endpoints: {
-      health: '/health',
-      ping: '/ping'
-    },
-    games: Object.keys(games).length,
-    timestamp: new Date().toISOString()
+    version: '2.0.0',
+    timestamp: new Date().toISOString(),
   });
 });
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
-    games: Object.keys(games).length,
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString()
+/**
+ * Health check endpoint for load balancers and monitoring services.
+ * Returns uptime and a simple OK status.
+ */
+app.get('/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    uptime: Math.round(process.uptime()),
+    timestamp: new Date().toISOString(),
   });
 });
 
-// Keep-alive endpoint for free tier hosting
-app.get('/ping', (req, res) => {
+/**
+ * Keep-alive endpoint for free-tier hosting services that sleep after
+ * periods of inactivity (such as Render).
+ */
+app.get('/ping', (_req, res) => {
   res.json({ pong: Date.now() });
 });
 
-// Debug endpoint to check current games
-app.get('/games', (req, res) => {
-  const gamesList = Object.entries(games).map(([code, game]) => ({
-    code,
-    state: game.state,
-    players: Object.keys(game.players).length,
-    questions: game.questions.length,
-    hostConnected: game.hostSocketId ? 'yes' : 'no'
-  }));
-  res.json({ 
-    count: Object.keys(games).length,
-    games: gamesList 
+// ---------------------------------------------------------------------------
+// Socket.IO Server Setup
+// ---------------------------------------------------------------------------
+
+const server = http.createServer(app);
+
+const io = new Server(server, {
+  cors: {
+    origin: allowedOrigins,
+    methods: ['GET', 'POST'],
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Socket Event Handlers
+// ---------------------------------------------------------------------------
+
+io.on('connection', (socket) => {
+  logger.info('Client connected', { socketId: socket.id });
+
+  // -----------------------------------------------------------------------
+  // host:create - Host creates a new quiz game
+  // -----------------------------------------------------------------------
+  socket.on(
+    'host:create',
+    (payload: unknown, callback: (data: { code?: string; error?: string }) => void) => {
+      // Rate limit check
+      if (!checkRateLimit(socket.id, 'host:create', RATE_LIMITS.hostCreate)) {
+        logger.warn('Rate limit exceeded for game creation', { socketId: socket.id });
+        return callback({ error: 'Too many requests. Please wait before creating another game.' });
+      }
+
+      // Validate payload
+      const result = CreateGameSchema.safeParse(payload);
+      if (!result.success) {
+        const errorMessage = result.error.issues.map((i) => i.message).join(', ');
+        logger.warn('Invalid create game payload', { socketId: socket.id, error: errorMessage });
+        return callback({ error: 'Invalid quiz data. Please check your questions and try again.' });
+      }
+
+      // Create the game
+      const code = createGame(socket.id, result.data.questions);
+      if (!code) {
+        return callback({ error: 'Server is at capacity. Please try again later.' });
+      }
+
+      socket.join(code);
+
+      // Notify the host of their role so the client does not need URL params
+      socket.emit('game:role', { role: 'host', code });
+
+      callback({ code });
+    }
+  );
+
+  // -----------------------------------------------------------------------
+  // player:join - Player joins an existing game
+  // -----------------------------------------------------------------------
+  socket.on(
+    'player:join',
+    (payload: unknown, callback: (data: { ok: boolean; reason?: string }) => void) => {
+      if (!checkRateLimit(socket.id, 'player:join', RATE_LIMITS.playerJoin)) {
+        logger.warn('Rate limit exceeded for join attempts', { socketId: socket.id });
+        return callback({ ok: false, reason: 'Too many join attempts. Please wait a moment.' });
+      }
+
+      const result = JoinGameSchema.safeParse(payload);
+      if (!result.success) {
+        return callback({ ok: false, reason: 'Invalid game code or name provided.' });
+      }
+
+      const { code, name } = result.data;
+      const joinResult = addPlayer(code, socket.id, name);
+
+      if (!joinResult.ok) {
+        return callback(joinResult);
+      }
+
+      socket.join(code);
+
+      // Notify the player of their role
+      socket.emit('game:role', { role: 'player', code });
+
+      // Broadcast updated player list to all participants
+      io.to(code).emit('lobby:update', getPlayerList(code));
+
+      callback({ ok: true });
+    }
+  );
+
+  // -----------------------------------------------------------------------
+  // host:start - Host starts the quiz
+  // -----------------------------------------------------------------------
+  socket.on('host:start', (payload: unknown) => {
+    if (!checkRateLimit(socket.id, 'host:start', RATE_LIMITS.hostStart)) {
+      return;
+    }
+
+    const result = StartGameSchema.safeParse(payload);
+    if (!result.success) return;
+
+    const { code } = result.data;
+
+    // Server-side host verification
+    if (!isGameHost(code, socket.id)) {
+      logger.warn('Non-host attempted to start game', { socketId: socket.id, code });
+      return;
+    }
+
+    const game = getGame(code);
+    if (!game || Object.keys(game.players).length === 0) return;
+
+    startNextQuestion(code);
   });
-});
 
-const port = Number(process.env.PORT || 3001);
-server.listen(port, () => {
-  console.log(`🚀 Laddle server running on http://localhost:${port}`);
-  console.log(`📊 Health check: http://localhost:${port}/health`);
-});
+  // -----------------------------------------------------------------------
+  // player:answer - Player submits an answer
+  // -----------------------------------------------------------------------
+  socket.on('player:answer', (payload: unknown) => {
+    if (!checkRateLimit(socket.id, 'player:answer', RATE_LIMITS.playerAnswer)) {
+      return;
+    }
 
-// Cleanup old games periodically (prevent memory leaks)
-setInterval(() => {
-  const now = Date.now();
-  Object.entries(games).forEach(([code, game]) => {
-    // Remove games that have been idle for more than 1 hour
-    if (game.state === 'lobby' && Object.keys(game.players).length === 0) {
-      delete games[code];
-      console.log(`Cleaned up idle game: ${code}`);
+    const result = AnswerSchema.safeParse(payload);
+    if (!result.success) return;
+
+    const { code, choiceIndex } = result.data;
+    const recorded = recordAnswer(code, socket.id, choiceIndex);
+
+    if (recorded) {
+      io.to(socket.id).emit('player:answer:ack');
     }
   });
-}, 60000); // Check every minute
+
+  // -----------------------------------------------------------------------
+  // disconnect - Handle client disconnection
+  // -----------------------------------------------------------------------
+  socket.on('disconnect', () => {
+    logger.info('Client disconnected', { socketId: socket.id });
+
+    const result = handleDisconnect(socket.id);
+
+    if (result.type === 'host' && result.code) {
+      io.to(result.code).emit('game:ended');
+    } else if (result.type === 'player' && result.code && result.players) {
+      io.to(result.code).emit('lobby:update', result.players);
+    }
+
+    // Clean up rate limit entries for this socket
+    clearRateLimits(socket.id);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Game Flow Helpers
+// These orchestrate the question lifecycle by coordinating between the
+// game manager and the Socket.IO event emitter.
+// ---------------------------------------------------------------------------
+
+/**
+ * Advances to the next question in the game. If all questions have been
+ * answered, emits the final results to all participants.
+ */
+function startNextQuestion(code: string): void {
+  const result = advanceToNextQuestion(code);
+
+  if (result.finished) {
+    if (result.leaderboard) {
+      io.to(code).emit('game:results', result.leaderboard);
+    }
+    return;
+  }
+
+  if (result.questionData) {
+    // Send question to all players (correct answer is NOT included)
+    io.to(code).emit('game:question', {
+      index: result.questionData.index,
+      total: result.questionData.total,
+      endsAt: result.questionData.endsAt,
+      q: result.questionData.question,
+    });
+
+    // Schedule automatic question finalization when time expires
+    const durationMs = result.questionData.question.durationSec * 1000;
+    setTimeout(() => {
+      endCurrentQuestion(code);
+    }, durationMs + 500); // 500ms buffer for network latency
+  }
+}
+
+/**
+ * Finalizes the current question by calculating scores and then
+ * automatically advancing to the next question after a brief pause.
+ */
+function endCurrentQuestion(code: string): void {
+  const correctIndex = finalizeQuestion(code);
+  if (correctIndex === null) return;
+
+  io.to(code).emit('game:question:end', { correctIndex });
+
+  // Pause between questions to show the correct answer
+  setTimeout(() => {
+    startNextQuestion(code);
+  }, 3000);
+}
+
+// ---------------------------------------------------------------------------
+// Periodic Maintenance
+// Runs every 60 seconds to clean up abandoned game sessions.
+// ---------------------------------------------------------------------------
+
+setInterval(() => {
+  cleanupIdleGames();
+}, 60_000);
+
+// ---------------------------------------------------------------------------
+// Server Startup
+// ---------------------------------------------------------------------------
+
+server.listen(PORT, () => {
+  logger.info('Ladle server started', {
+    port: PORT,
+    environment: NODE_ENV,
+    corsOrigins: allowedOrigins.length,
+  });
+  logger.info('Health check available', { endpoint: `/health` });
+});
