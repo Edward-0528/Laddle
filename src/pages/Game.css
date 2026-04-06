@@ -333,10 +333,10 @@
 }
 
 .question-text {
-  font-size: 1.5rem;
+  font-size: clamp(1.25rem, 3.5vw, 1.75rem);
   font-weight: 700;
   color: #ffffff;
-  line-height: 1.4;
+  line-height: 1.45;
   margin: 0;
 }
 
@@ -829,16 +829,39 @@
     grid-template-columns: 1fr;
   }
 
+  .question-top-bar {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: center;
+    margin-bottom: 1rem;
+  }
+
+  .question-progress {
+    order: 1;
+  }
+
+  .timer-container {
+    order: 2;
+    width: 56px;
+    height: 56px;
+  }
+
+  .timer-number {
+    font-size: 1.1rem;
+  }
+
   .question-text {
-    font-size: 1.25rem;
+    font-size: 1.125rem;
   }
 
   .question-text-box {
-    padding: 1.5rem 1.25rem;
+    padding: 1.125rem 1rem;
+    margin-bottom: 1rem;
   }
 
   .game-code-value {
-    font-size: 2.25rem;
+    font-size: 1.75rem;
+    letter-spacing: 0.08em;
   }
 
   .podium-stage {
@@ -919,10 +942,12 @@
 
 .game-code-value {
   display: block;
-  font-size: 3rem;
+  font-size: clamp(1.75rem, 8vw, 3rem);
   font-weight: 800;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.12em;
   color: var(--color-primary);
+  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 .lobby-join-url {
