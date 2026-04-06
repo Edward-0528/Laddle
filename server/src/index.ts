@@ -64,6 +64,10 @@ function getAllowedOrigins(): string[] {
   const origins: string[] = [
     'http://localhost:5173',
     'http://localhost:5174',
+    // Production Netlify frontend — always allowed as a hardcoded fallback
+    // so the server works even if CLIENT_ORIGIN env var is not set in Render
+    'https://ladle.netlify.app',
+    'https://ladle-3c896.web.app',
   ];
 
   if (process.env.CLIENT_ORIGIN) {
