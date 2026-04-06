@@ -103,11 +103,18 @@ const Dashboard: React.FC = () => {
                 : `${quizzes.length} quiz${quizzes.length !== 1 ? 'zes' : ''} in your library`}
             </p>
           </div>
-          <Link to="/create">
-            <Button variant="primary" size="md">
-              Create New Quiz
-            </Button>
-          </Link>
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+            <Link to="/library">
+              <Button variant="secondary" size="md">
+                📚 Browse Library
+              </Button>
+            </Link>
+            <Link to="/create">
+              <Button variant="primary" size="md">
+                Create New Quiz
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {error && (
@@ -137,6 +144,11 @@ const Dashboard: React.FC = () => {
                 <div className="quiz-card-header">
                   <span className="quiz-card-category">{quiz.category}</span>
                   {quiz.isPublic && <span className="quiz-card-badge">Public</span>}
+                  {(quiz as any).forkedFrom && (
+                    <span className="quiz-card-badge" style={{ background: 'var(--color-primary-bg)', color: 'var(--color-primary)' }}>
+                      📚 From Library
+                    </span>
+                  )}
                 </div>
                 <h3 className="quiz-card-title">{quiz.title}</h3>
                 <p className="quiz-card-desc">

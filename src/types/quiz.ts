@@ -27,14 +27,34 @@ export interface QuizStats {
   averageScore: number;
 }
 
+// K-12 subject taxonomy aligned to California state curriculum standards
+export type SubjectArea =
+  | 'math'
+  | 'science'
+  | 'english'
+  | 'history'
+  | 'social-studies'
+  | 'other';
+
+// Grade band groupings used in the library filter UI
+export type GradeBand = 'K-2' | '3-5' | '6-8' | '9-12';
+
+// Individual grade levels (K = Kindergarten)
+export type GradeLevel = 'K' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | '11' | '12';
+
 export interface Quiz {
   id: string;
-  createdBy: string;
+  createdBy: string;       // uid, or 'SYSTEM' for library templates
   title: string;
   description: string;
   category: string;
   coverImage?: string;
   isPublic: boolean;
+  isTemplate?: boolean;    // true = read-only library quiz; users fork a copy
+  subject?: SubjectArea;
+  gradeLevel?: GradeLevel;
+  gradeBand?: GradeBand;
+  caStandard?: string;     // e.g. "CCSS.MATH.3.OA" — California curriculum alignment
   questions: QuizQuestion[];
   settings: QuizSettings;
   stats: QuizStats;

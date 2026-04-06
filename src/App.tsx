@@ -23,6 +23,8 @@ const QuizBuilder = lazy(() => import('./pages/QuizBuilder'));
 const JoinGame = lazy(() => import('./pages/JoinGame'));
 const Game = lazy(() => import('./pages/Game'));
 
+const Library = lazy(() => import('./pages/Library'));
+
 function PageLoader() {
   return (
     <div className="protected-loading">
@@ -46,6 +48,7 @@ function App() {
               <Route path="/register" element={<Register />} />
               <Route path="/join" element={<JoinGame />} />
               <Route path="/game/:code" element={<Game />} />
+              <Route path="/library" element={<Library />} />
 
               {/* Protected routes */}
               <Route

@@ -201,35 +201,40 @@ const Landing: React.FC = () => {
         </div>
       </section>
 
-      {/* -------- Categories Section -------- */}
+      {/* -------- Categories / K-12 Library Section -------- */}
       <section className="categories section">
         <div className="container">
           <div className="section-header">
-            <h2 className="section-title">Select a Category</h2>
+            <h2 className="section-title">Ready-Made Quizzes for K–12</h2>
             <p className="section-subtitle">
-              Browse popular quiz categories or create your own
+              Pre-configured quizzes aligned to California curriculum standards.
+              Pick a subject, copy the quiz to your dashboard, and launch it in seconds.
             </p>
           </div>
 
           <div className="categories-grid">
             {[
-              { name: 'General Knowledge', color: '#6C3FC5', quizCount: 24 },
-              { name: 'Science', color: '#4ECDC4', quizCount: 18 },
-              { name: 'History', color: '#F5A623', quizCount: 15 },
-              { name: 'Movies and TV', color: '#FF6B6B', quizCount: 21 },
-              { name: 'Music', color: '#55A3FF', quizCount: 12 },
-              { name: 'Sports', color: '#38B2AC', quizCount: 16 },
-              { name: 'Technology', color: '#8B6BD4', quizCount: 10 },
-              { name: 'Pop Culture', color: '#FFB347', quizCount: 19 },
+              { name: 'Math',                subject: 'math',           color: '#6C3FC5', desc: 'CCSS-aligned: counting, multiplication, algebra' },
+              { name: 'Science',             subject: 'science',        color: '#4ECDC4', desc: 'CA NGSS: Earth systems, cells, ecology' },
+              { name: 'English Language Arts', subject: 'english',      color: '#55A3FF', desc: 'Reading comprehension, writing, grammar' },
+              { name: 'History',             subject: 'history',        color: '#F5A623', desc: 'CA HSS: Colonial America through Civil Rights' },
+              { name: 'Social Studies',      subject: 'social-studies', color: '#FF6B6B', desc: 'Civics, geography, economics' },
+              { name: 'All Subjects →',      subject: '',               color: '#8B6BD4', desc: 'Browse the full K–12 quiz library' },
             ].map((category) => (
-              <Card key={category.name} variant="default" padding="md" className="category-card">
-                <div
-                  className="category-color-bar"
-                  style={{ background: category.color }}
-                />
-                <h4 className="category-name">{category.name}</h4>
-                <p className="category-count">{category.quizCount} quizzes</p>
-              </Card>
+              <Link
+                key={category.name}
+                to={category.subject ? `/library?subject=${category.subject}` : '/library'}
+                style={{ textDecoration: 'none' }}
+              >
+                <Card variant="default" padding="md" className="category-card">
+                  <div
+                    className="category-color-bar"
+                    style={{ background: category.color }}
+                  />
+                  <h4 className="category-name">{category.name}</h4>
+                  <p className="category-count">{category.desc}</p>
+                </Card>
+              </Link>
             ))}
           </div>
         </div>

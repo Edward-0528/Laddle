@@ -36,8 +36,9 @@ function getCollection() {
 
 /**
  * Converts a Firestore document snapshot into a typed Quiz object.
+ * Exported so other services (e.g. library.ts) can reuse without duplication.
  */
-function docToQuiz(docSnap: any): Quiz {
+export function docToQuiz(docSnap: any): Quiz {
   const data = docSnap.data();
   return {
     id: docSnap.id,
