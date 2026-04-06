@@ -21,6 +21,7 @@ const Dashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [launchingId, setLaunchingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -61,19 +62,35 @@ const Dashboard: React.FC = () => {
   }
 
   function handleLaunch(quiz: Quiz) {
+    if (!socket.connected) {
+      setError('Connecting to game server... please try again in a moment.');
+      socket.connect();
+      return;
+    }
+
+    setLaunchingId(quiz.id);
+    setError('');
+
     const questions = quiz.questions.map((q) => ({
       text: q.text,
       choices: q.choices,
       answerIndex: q.correctAnswerIndex,
-      durationSec: quiz.settings.questionDuration,
+      durationSec: quiz.settings?.questionDuration ?? 20,
     }));
 
     socket.emit(
       'host:create',
       { questions },
-      (response: { code: string }) => {
+      (response: { code?: string; error?: string }) => {
+        setLaunchingId(null);
+        if (response.error || !response.code) {
+          setError(response.error ?? 'Failed to create game. Please try again.');
+          return;
+        }
         console.log('[Ladle] Game created with code:', response.code);
-        navigate(`/game/${response.code}`);
+        // Pass ?host=true so the Game page sets isHost immediately on mount
+        // (the game:role event fires before the page is mounted and would be missed)
+        navigate(`/game/${response.code}?host=true`);
       }
     );
   }
@@ -146,7 +163,7 @@ const Dashboard: React.FC = () => {
                   {quiz.isPublic && <span className="quiz-card-badge">Public</span>}
                   {(quiz as any).forkedFrom && (
                     <span className="quiz-card-badge" style={{ background: 'var(--color-primary-bg)', color: 'var(--color-primary)' }}>
-                      📚 From Library
+                      From Library
                     </span>
                   )}
                 </div>
@@ -163,6 +180,7 @@ const Dashboard: React.FC = () => {
                     variant="primary"
                     size="sm"
                     onClick={() => handleLaunch(quiz)}
+                    isLoading={launchingId === quiz.id}
                   >
                     Launch
                   </Button>
