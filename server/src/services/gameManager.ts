@@ -17,6 +17,8 @@ export interface Player {
   id: string;
   name: string;
   score: number;
+  streak: number;
+  previousRank: number;
 }
 
 export interface Question {
@@ -43,6 +45,21 @@ export interface Game {
   questionEndsAt?: number;
   answers: Record<string, PlayerAnswer>;
   createdAt: number;
+}
+
+export interface QuestionResult {
+  correctIndex: number;
+  answerCounts: number[];
+  leaderboard: RankedPlayer[];
+}
+
+export interface RankedPlayer {
+  rank: number;
+  name: string;
+  score: number;
+  pointsEarned: number;
+  streak: number;
+  rankDelta: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -157,7 +174,7 @@ export function addPlayer(
     return { ok: false, reason: 'This game is full. Maximum players reached.' };
   }
 
-  game.players[socketId] = { id: socketId, name, score: 0 };
+  game.players[socketId] = { id: socketId, name, score: 0, streak: 0, previousRank: 0 };
   logger.info('Player joined game', { code, playerName: name, socketId });
   return { ok: true };
 }
@@ -279,27 +296,82 @@ export function recordAnswer(
 }
 
 /**
- * Finalizes scoring for the current question. Awards base points and a
- * time-based bonus for correct answers. Returns the correct answer index.
+ * Finalizes scoring for the current question. Awards speed-based points
+ * (up to 1000) plus a streak bonus for consecutive correct answers.
+ * Returns rich result data including answer distribution and ranked leaderboard.
  */
-export function finalizeQuestion(code: string): number | null {
+export function finalizeQuestion(code: string): QuestionResult | null {
   const game = games[code];
   if (!game || game.state !== 'question') return null;
 
   const question = game.questions[game.currentQuestionIndex];
-  const maxTimeBonus = 1000;
   const questionDurationMs = question.durationSec * 1000;
 
+  // Snapshot current ranks before scoring so we can compute rank deltas
+  const playersSortedBefore = Object.values(game.players)
+    .sort((a, b) => b.score - a.score);
+  playersSortedBefore.forEach((player, index) => {
+    player.previousRank = index + 1;
+  });
+
+  // Tally how many players picked each choice
+  const answerCounts = new Array(question.choices.length).fill(0);
+  for (const answer of Object.values(game.answers)) {
+    if (answer.choiceIndex >= 0 && answer.choiceIndex < answerCounts.length) {
+      answerCounts[answer.choiceIndex] += 1;
+    }
+  }
+
+  // Score each player
   for (const [playerId, answer] of Object.entries(game.answers)) {
     const player = game.players[playerId];
     if (!player) continue;
 
     if (answer.choiceIndex === question.answerIndex) {
+      // Speed score: up to 1000 pts based on how quickly they answered
       const timeRemaining = Math.max(0, (game.questionEndsAt || 0) - answer.answeredAt);
-      const timeBonus = Math.round((timeRemaining / questionDurationMs) * maxTimeBonus);
-      player.score += 1000 + timeBonus;
+      const speedScore = Math.round((timeRemaining / questionDurationMs) * 1000);
+
+      // Streak bonus: +100 pts per streak level (capped at +500)
+      player.streak += 1;
+      const streakBonus = Math.min(player.streak - 1, 5) * 100;
+
+      player.score += speedScore + streakBonus;
+    } else {
+      player.streak = 0;
     }
   }
+
+  // Players who did not answer lose their streak
+  for (const [playerId, player] of Object.entries(game.players)) {
+    if (!game.answers[playerId]) {
+      player.streak = 0;
+    }
+  }
+
+  // Build ranked leaderboard with rank deltas
+  const ranked = Object.values(game.players)
+    .sort((a, b) => b.score - a.score)
+    .map((player, index) => {
+      const currentRank = index + 1;
+      const pointsEarned = (() => {
+        const answer = game.answers[player.id];
+        if (!answer || answer.choiceIndex !== question.answerIndex) return 0;
+        const timeRemaining = Math.max(0, (game.questionEndsAt || 0) - answer.answeredAt);
+        const speedScore = Math.round((timeRemaining / questionDurationMs) * 1000);
+        const streakBonus = Math.min(player.streak - 1, 5) * 100;
+        return speedScore + streakBonus;
+      })();
+
+      return {
+        rank: currentRank,
+        name: player.name,
+        score: player.score,
+        pointsEarned,
+        streak: player.streak,
+        rankDelta: player.previousRank - currentRank,
+      };
+    });
 
   logger.info('Question finalized', {
     code,
@@ -307,7 +379,11 @@ export function finalizeQuestion(code: string): number | null {
     correctIndex: question.answerIndex,
   });
 
-  return question.answerIndex;
+  return {
+    correctIndex: question.answerIndex,
+    answerCounts,
+    leaderboard: ranked,
+  };
 }
 
 /**

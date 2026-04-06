@@ -44,6 +44,7 @@ import {
   handleDisconnect,
   getActiveGameCount,
   cleanupIdleGames,
+  QuestionResult,
 } from './services/gameManager';
 
 // ---------------------------------------------------------------------------
@@ -328,19 +329,20 @@ function startNextQuestion(code: string): void {
 }
 
 /**
- * Finalizes the current question by calculating scores and then
- * automatically advancing to the next question after a brief pause.
+ * Finalizes the current question by calculating scores and emitting
+ * the full result (correct answer, answer distribution, ranked leaderboard)
+ * before automatically advancing to the next question.
  */
 function endCurrentQuestion(code: string): void {
-  const correctIndex = finalizeQuestion(code);
-  if (correctIndex === null) return;
+  const result: QuestionResult | null = finalizeQuestion(code);
+  if (result === null) return;
 
-  io.to(code).emit('game:question:end', { correctIndex });
+  io.to(code).emit('game:question:end', result);
 
-  // Pause between questions to show the correct answer
+  // Pause between questions to show the answer reveal screen
   setTimeout(() => {
     startNextQuestion(code);
-  }, 3000);
+  }, 5000);
 }
 
 // ---------------------------------------------------------------------------
