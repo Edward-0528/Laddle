@@ -1,35 +1,4 @@
-#!/usr/bin/env ts-node
-// ---------------------------------------------------------------------------
-// scripts/seedLibrary.ts
-// One-time script that seeds Firestore with the K-12 library quiz templates.
-//
-// Prerequisites:
-//   1. npm install -D ts-node  (if not already installed)
-//   2. Set GOOGLE_APPLICATION_CREDENTIALS env var to your Firebase service
-//      account JSON key, OR ensure you're logged in with `firebase login`
-//      and have the Firebase Admin SDK installed.
-//
-//   For simplest use, run via the browser-based seed flow:
-//     navigate to /admin/seed  (only accessible to signed-in users)
-//   Or run from terminal with firebase-admin:
-//     npx ts-node scripts/seedLibrary.ts
-//
-// Safety: The seed function checks for existing template titles before
-// inserting, so it is safe to run multiple times without creating duplicates.
-// ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// OPTION A: Run this in the browser dev console (simplest)
-// ---------------------------------------------------------------------------
-// 1. Open your app in the browser and sign in.
-// 2. Open the browser console.
-// 3. Paste and run the following:
-//
-//   import('/src/services/library').then(lib => lib.seedLibrary())
-//
-// ---------------------------------------------------------------------------
-// OPTION B: Run via Firebase Admin SDK (for CI/CD or server-side seeding)
-// ---------------------------------------------------------------------------
 
 import * as admin from 'firebase-admin';
 import { LIBRARY_QUIZZES } from '../src/data/libraryQuizzes';
