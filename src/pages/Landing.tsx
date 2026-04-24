@@ -74,15 +74,11 @@ const Landing: React.FC = () => {
                       value={`${window.location.origin}/demo`}
                       size={110}
                       bgColor="transparent"
-                      fgColor="#6C3FC5"
+                      fgColor="#ffffff"
                       level="M"
                     />
-                    <span className="hero-qr-label">Scan to try on your phone</span>
                   </div>
                 </Link>
-                <div className="mascot-body">
-                  <span className="mascot-eyes">🎉</span>
-                </div>
                 <p className="mascot-text">Try It Out Now!</p>
                 <Link to="/demo" className="hero-demo-cta">
                   👉 Launch Demo
