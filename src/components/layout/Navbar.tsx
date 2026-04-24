@@ -55,7 +55,7 @@ const Navbar: React.FC<NavbarProps> = ({
             to="/demo"
             className={`navbar-link ${isActive('/demo') ? 'navbar-link-active' : ''}`}
           >
-            🎯 Try Demo
+            Try Demo
           </Link>
           <Link
             to="/join"
@@ -126,7 +126,7 @@ const Navbar: React.FC<NavbarProps> = ({
             Home
           </Link>
           <Link to="/demo" className="navbar-mobile-link" onClick={closeMobileMenu}>
-            🎯 Try Demo
+            Try Demo
           </Link>
           <Link to="/join" className="navbar-mobile-link" onClick={closeMobileMenu}>
             Join Quiz

@@ -12,7 +12,8 @@
     "build:server": "cd server && npm run build",
     "start": "cd server && npm start",
     "install:all": "npm install && cd server && npm install",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint:emoji": "bash scripts/check-no-emoji.sh"
   },
   "keywords": [
     "quiz",

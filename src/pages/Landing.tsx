@@ -81,7 +81,7 @@ const Landing: React.FC = () => {
                 </Link>
                 <p className="mascot-text">Try It Out Now!</p>
                 <Link to="/demo" className="hero-demo-cta">
-                  👉 Launch Demo
+                  Launch Demo
                 </Link>
               </div>
             </div>
