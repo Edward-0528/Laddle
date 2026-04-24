@@ -5,13 +5,9 @@
 // ---------------------------------------------------------------------------
 
 import {
-  collection,
-  doc,
   addDoc,
   updateDoc,
   deleteDoc,
-  getDoc,
-  getDocs,
   query,
   where,
   orderBy,
@@ -19,6 +15,7 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { getCol, getDocRef, safeFetchDoc, safeFetchDocs } from './db';
 import type { Quiz, QuizQuestion, QuizSettings } from '../types/quiz';
 
 const COLLECTION_NAME = 'quizzes';
@@ -28,10 +25,7 @@ const COLLECTION_NAME = 'quizzes';
 // ---------------------------------------------------------------------------
 
 function getCollection() {
-  if (!db) {
-    throw new Error('Firestore is not initialized. Check your Firebase configuration.');
-  }
-  return collection(db, COLLECTION_NAME);
+  return getCol(COLLECTION_NAME);
 }
 
 /**
@@ -100,10 +94,12 @@ export async function createQuiz(
  */
 export async function getQuiz(quizId: string): Promise<Quiz | null> {
   if (!db) return null;
-  const docRef = doc(db, COLLECTION_NAME, quizId);
-  const docSnap = await getDoc(docRef);
-  if (!docSnap.exists()) return null;
-  return docToQuiz(docSnap);
+  try {
+    const snap = await safeFetchDoc(COLLECTION_NAME, quizId);
+    return docToQuiz(snap);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -113,7 +109,7 @@ export async function getQuiz(quizId: string): Promise<Quiz | null> {
 export async function getUserQuizzes(userId: string): Promise<Quiz[]> {
   const col = getCollection();
   const q = query(col, where('createdBy', '==', userId), orderBy('updatedAt', 'desc'));
-  const snapshot = await getDocs(q);
+  const snapshot = await safeFetchDocs(q);
   return snapshot.docs.map(docToQuiz);
 }
 
@@ -125,7 +121,7 @@ export async function updateQuiz(
   data: Partial<Pick<Quiz, 'title' | 'description' | 'category' | 'questions' | 'settings' | 'isPublic'>>
 ): Promise<void> {
   if (!db) return;
-  const docRef = doc(db, COLLECTION_NAME, quizId);
+  const docRef = getDocRef(COLLECTION_NAME, quizId);
   await updateDoc(docRef, {
     ...data,
     updatedAt: serverTimestamp(),
@@ -138,7 +134,7 @@ export async function updateQuiz(
  */
 export async function deleteQuiz(quizId: string): Promise<void> {
   if (!db) return;
-  const docRef = doc(db, COLLECTION_NAME, quizId);
+  const docRef = getDocRef(COLLECTION_NAME, quizId);
   await deleteDoc(docRef);
   console.log('[Ladle] Quiz deleted:', quizId);
 }
@@ -162,7 +158,7 @@ export async function incrementQuizStats(
 
   await updateQuiz(quizId, {} as any);
   if (!db) return;
-  const docRef = doc(db, COLLECTION_NAME, quizId);
+  const docRef = getDocRef(COLLECTION_NAME, quizId);
   await updateDoc(docRef, {
     'stats.timesPlayed': totalGames,
     'stats.totalPlayers': totalPlayers,

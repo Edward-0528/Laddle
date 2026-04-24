@@ -10,6 +10,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { socket } from '../services/socket';
+import { EVENTS } from '../types/events';
 import { QRCodeSVG } from 'qrcode.react';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
@@ -101,15 +102,15 @@ const Game = () => {
     : '';
 
   useEffect(() => {
-    socket.on('game:role', (data: { role: 'host' | 'player' }) => {
+    socket.on(EVENTS.GAME_ROLE, (data: { role: 'host' | 'player' }) => {
       setIsHost(data.role === 'host');
     });
 
-    socket.on('lobby:update', (playerList: Player[]) => {
+    socket.on(EVENTS.LOBBY_UPDATE, (playerList: Player[]) => {
       setPlayers(playerList);
     });
 
-    socket.on('game:question', (data: GameData) => {
+    socket.on(EVENTS.GAME_QUESTION, (data: GameData) => {
       setQuestionTransition(true);
       // Reset live answer count for host
       setAnswerCount(0);
@@ -126,11 +127,11 @@ const Game = () => {
       }, 400);
     });
 
-    socket.on('game:answer:count', (count: number) => {
+    socket.on(EVENTS.GAME_ANSWER_COUNT, (count: number) => {
       setAnswerCount(count);
     });
 
-    socket.on('game:question:end', (result: QuestionResult) => {
+    socket.on(EVENTS.GAME_QUESTION_END, (result: QuestionResult) => {
       setQuestionResult(result);
       setLeaderboard(result.leaderboard);
       setGameState('reveal');
@@ -163,16 +164,16 @@ const Game = () => {
       }, 2000);
     });
 
-    socket.on('game:results', (data: RankedPlayer[]) => {
+    socket.on(EVENTS.GAME_RESULTS, (data: RankedPlayer[]) => {
       setLeaderboard(data);
       setGameState('results');
     });
 
-    socket.on('game:ended', () => {
+    socket.on(EVENTS.GAME_ENDED, () => {
       setGameState('ended');
     });
 
-    socket.on('player:answer:ack', () => {
+    socket.on(EVENTS.PLAYER_ANSWER_ACK, () => {
       setHasAnswered(true);
     });
 
@@ -180,18 +181,18 @@ const Game = () => {
     if (urlParams.get('host') === 'true') setIsHost(true);
 
     if (code) {
-      socket.emit('lobby:request', { code });
+      socket.emit(EVENTS.LOBBY_REQUEST, { code });
     }
 
     return () => {
-      socket.off('game:role');
-      socket.off('lobby:update');
-      socket.off('game:question');
-      socket.off('game:question:end');
-      socket.off('game:answer:count');
-      socket.off('game:results');
-      socket.off('game:ended');
-      socket.off('player:answer:ack');
+      socket.off(EVENTS.GAME_ROLE);
+      socket.off(EVENTS.LOBBY_UPDATE);
+      socket.off(EVENTS.GAME_QUESTION);
+      socket.off(EVENTS.GAME_QUESTION_END);
+      socket.off(EVENTS.GAME_ANSWER_COUNT);
+      socket.off(EVENTS.GAME_RESULTS);
+      socket.off(EVENTS.GAME_ENDED);
+      socket.off(EVENTS.PLAYER_ANSWER_ACK);
       if (timerRef.current) clearTimeout(timerRef.current);
       if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
     };
@@ -206,13 +207,13 @@ const Game = () => {
   }, [gameState, timeLeft]);
 
   function startGame() {
-    socket.emit('host:start', { code });
+    socket.emit(EVENTS.HOST_START, { code });
   }
 
   function selectChoice(choiceIndex: number) {
     if (isHost || hasAnswered || timeLeft <= 0 || gameState !== 'question') return;
     setSelectedChoice(choiceIndex);
-    socket.emit('player:answer', { code, choiceIndex });
+    socket.emit(EVENTS.PLAYER_ANSWER, { code, choiceIndex });
   }
 
   // ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@
 /* ---- Page shell ---- */
 .demo-page {
   min-height: 100vh;
-  background: linear-gradient(160deg, #1a0a3c 0%, #3a1278 60%, #6C3FC5 100%);
+  background: linear-gradient(160deg, var(--color-bg-hero-deep) 0%, var(--color-bg-hero-mid) 60%, var(--color-primary) 100%);
   color: white;
   display: flex;
   flex-direction: column;
@@ -46,8 +46,8 @@
 }
 
 .demo-badge {
-  background: #f5a623;
-  color: #3a1278;
+  background: var(--color-secondary);
+  color: var(--color-bg-hero-mid);
   font-size: 0.7rem;
   font-weight: 800;
   padding: 0.25rem 0.6rem;
@@ -104,13 +104,13 @@
 
 .teacher-label {
   background: rgba(245,166,35,0.2);
-  color: #f5a623;
+  color: var(--color-secondary);
   border: 1px solid rgba(245,166,35,0.35);
 }
 
 .student-label {
   background: rgba(78,205,196,0.2);
-  color: #4ECDC4;
+  color: var(--color-success);
   border: 1px solid rgba(78,205,196,0.35);
 }
 
@@ -160,7 +160,7 @@
 .demo-join-code {
   font-size: 2.8rem;
   font-weight: 900;
-  color: #f5a623;
+  color: var(--color-secondary);
   letter-spacing: 0.25em;
   line-height: 1.1;
 }
@@ -189,8 +189,8 @@
 
 .chip-you {
   background: rgba(245,166,35,0.25);
-  border-color: #f5a623;
-  color: #f5a623;
+  border-color: var(--color-secondary);
+  color: var(--color-secondary);
 }
 
 .demo-waiting {
@@ -202,8 +202,8 @@
 .demo-start-btn {
   margin-top: 0.5rem;
   padding: 0.85rem 2.5rem;
-  background: #f5a623;
-  color: #3a1278;
+  background: var(--color-secondary);
+  color: var(--color-bg-hero-mid);
   font-size: 1.1rem;
   font-weight: 800;
   border: none;
@@ -244,7 +244,7 @@
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  background: conic-gradient(#f5a623 calc(var(--pct, 100) * 1%), rgba(255,255,255,0.12) 0%);
+  background: conic-gradient(var(--color-secondary) calc(var(--pct, 100) * 1%), rgba(255,255,255,0.12) 0%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -256,7 +256,7 @@
   position: absolute;
   width: 40px;
   height: 40px;
-  background: #1a0a3c;
+  background: var(--color-bg-hero-deep);
   border-radius: 50%;
 }
 
@@ -265,13 +265,13 @@
   z-index: 1;
   font-size: 1.1rem;
   font-weight: 800;
-  color: #f5a623;
+  color: var(--color-secondary);
 }
 
 .demo-time-up {
   font-size: 0.85rem;
   font-weight: 700;
-  color: #f5a623;
+  color: var(--color-secondary);
 }
 
 .demo-question-text {
@@ -341,7 +341,7 @@
 }
 
 .demo-check {
-  color: #2ecc71;
+  color: var(--color-result-correct);
   font-size: 1.1rem;
   font-weight: 800;
 }
@@ -363,7 +363,7 @@
 
 .demo-next-btn {
   padding: 0.75rem 2rem;
-  background: #6C3FC5;
+  background: var(--color-primary);
   color: white;
   font-size: 1rem;
   font-weight: 700;
@@ -410,7 +410,7 @@
 
 .lb-you {
   background: rgba(245,166,35,0.18);
-  border-color: #f5a623;
+  border-color: var(--color-secondary);
 }
 
 .demo-lb-rank {
@@ -418,7 +418,7 @@
   font-weight: 800;
   width: 28px;
   text-align: center;
-  color: #f5a623;
+  color: var(--color-secondary);
 }
 
 .demo-lb-name {
@@ -429,7 +429,7 @@
 
 .demo-lb-score {
   font-weight: 800;
-  color: #f5a623;
+  color: var(--color-secondary);
   font-size: 0.95rem;
 }
 
@@ -447,8 +447,8 @@
 .demo-signup-btn {
   display: inline-block;
   padding: 0.8rem 2rem;
-  background: #f5a623;
-  color: #3a1278;
+  background: var(--color-secondary);
+  color: var(--color-bg-hero-mid);
   font-weight: 800;
   font-size: 1rem;
   border-radius: 999px;
@@ -501,7 +501,7 @@
 .demo-phone-inner {
   height: 100%;
   min-height: 512px;
-  background: linear-gradient(160deg, #1a0a3c 0%, #3a1278 100%);
+  background: linear-gradient(160deg, var(--color-bg-hero-deep) 0%, var(--color-bg-hero-mid) 100%);
   overflow-y: auto;
   padding-top: 24px;
   box-sizing: border-box;
@@ -531,8 +531,8 @@
 
 .student-joined-badge {
   background: rgba(46,204,113,0.2);
-  color: #2ecc71;
-  border: 1px solid #2ecc71;
+  color: var(--color-result-correct);
+  border: 1px solid var(--color-result-correct);
   font-size: 0.75rem;
   font-weight: 700;
   padding: 0.25rem 0.75rem;
@@ -542,7 +542,7 @@
 .student-name-display {
   font-size: 1rem;
   font-weight: 700;
-  color: #f5a623;
+  color: var(--color-secondary);
   margin: 0;
 }
 
@@ -692,13 +692,13 @@
   margin: 0;
 }
 
-.correct-text { color: #2ecc71; }
-.wrong-text { color: #e74c3c; }
+.correct-text { color: var(--color-result-correct); }
+.wrong-text { color: var(--color-result-wrong); }
 
 .student-result-pts {
   font-size: 1.1rem;
   font-weight: 800;
-  color: #f5a623;
+  color: var(--color-secondary);
   margin: 0;
 }
 
@@ -746,7 +746,7 @@
 .student-final-score {
   font-size: 2.2rem;
   font-weight: 900;
-  color: #f5a623;
+  color: var(--color-secondary);
   margin: 0;
 }
 
@@ -760,8 +760,8 @@
   display: inline-block;
   margin-top: 0.5rem;
   padding: 0.6rem 1.5rem;
-  background: #f5a623;
-  color: #3a1278;
+  background: var(--color-secondary);
+  color: var(--color-bg-hero-mid);
   font-weight: 800;
   border-radius: 999px;
   text-decoration: none;
@@ -798,8 +798,8 @@
 
 .demo-cta-primary {
   padding: 0.8rem 2rem;
-  background: #f5a623;
-  color: #3a1278;
+  background: var(--color-secondary);
+  color: var(--color-bg-hero-mid);
   font-weight: 800;
   font-size: 1rem;
   border-radius: 999px;

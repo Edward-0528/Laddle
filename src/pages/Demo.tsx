@@ -8,7 +8,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import './Demo.css';
-import './Demo.css';
 
 // ---- Demo quiz data --------------------------------------------------------
 const DEMO_QUESTIONS = [

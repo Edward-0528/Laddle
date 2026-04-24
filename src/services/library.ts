@@ -21,16 +21,14 @@
 // ---------------------------------------------------------------------------
 
 import {
-  collection,
-  doc,
   addDoc,
-  getDocs,
   query,
   where,
   serverTimestamp,
   writeBatch,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { getCol, getDocRef, safeFetchDocs } from './db';
 import type { Quiz, SubjectArea, GradeBand } from '../types/quiz';
 import { LIBRARY_QUIZZES } from '../data/libraryQuizzes';
 import { docToQuiz } from './quizzes';
@@ -54,7 +52,7 @@ export async function getLibraryQuizzes(opts?: {
 }): Promise<Quiz[]> {
   if (!db) return [];
 
-  const col = collection(db, COLLECTION_NAME);
+  const col = getCol(COLLECTION_NAME);
 
   let results: Quiz[] = [];
 
@@ -73,7 +71,7 @@ export async function getLibraryQuizzes(opts?: {
     }
 
     const q = query(col, ...constraints);
-    const snapshot = await getDocs(q);
+    const snapshot = await safeFetchDocs(q);
     results = snapshot.docs.map(docToQuiz);
   } catch (err: any) {
     // Composite index not ready yet — fall back to the minimal 2-field query
@@ -85,7 +83,7 @@ export async function getLibraryQuizzes(opts?: {
         where('isTemplate', '==', true),
         where('createdBy', '==', 'SYSTEM')
       );
-      const snapshot = await getDocs(fallbackQ);
+      const snapshot = await safeFetchDocs(fallbackQ);
       results = snapshot.docs.map(docToQuiz);
 
       // Apply filters client-side
@@ -122,7 +120,7 @@ export async function forkQuizToUser(
 ): Promise<string> {
   if (!db) throw new Error('Firestore is not initialized.');
 
-  const col = collection(db, COLLECTION_NAME);
+  const col = getCol(COLLECTION_NAME);
 
   const newDoc = await addDoc(col, {
     title: template.title,
@@ -147,7 +145,7 @@ export async function forkQuizToUser(
   // Increment adoptions counter on the template (best-effort, no throw)
   try {
     const batch = writeBatch(db);
-    const templateRef = doc(db, COLLECTION_NAME, template.id);
+    const templateRef = getDocRef(COLLECTION_NAME, template.id);
     batch.update(templateRef, {
       'stats.timesPlayed': (template.stats.timesPlayed ?? 0) + 1,
     });
@@ -176,13 +174,13 @@ export async function forkQuizToUser(
 export async function seedLibrary(): Promise<void> {
   if (!db) throw new Error('Firestore not initialized.');
 
-  const col = collection(db, COLLECTION_NAME);
+  const col = getCol(COLLECTION_NAME);
 
   // Fetch existing template titles to skip duplicates
-  const existing = await getDocs(
+  const existing = await safeFetchDocs(
     query(col, where('isTemplate', '==', true), where('createdBy', '==', 'SYSTEM'))
   );
-  const existingTitles = new Set(existing.docs.map((d) => d.data().title as string));
+  const existingTitles = new Set(existing.docs.map((d) => (d.data() as { title: string }).title));
 
   let seeded = 0;
   for (const template of LIBRARY_QUIZZES) {

@@ -154,7 +154,7 @@
 
 .hero-demo-cta:hover {
   transform: translateY(-2px);
-  background: #fbb53a;
+  background: var(--color-secondary-hover);
 }
 
 /* Wave divider */

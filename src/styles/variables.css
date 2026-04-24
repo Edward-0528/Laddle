@@ -18,6 +18,7 @@
   --color-secondary: #F5A623;
   --color-secondary-light: #FFD93D;
   --color-secondary-dark: #D4900E;
+  --color-secondary-hover: #fbb53a;  /* button hover tint */
 
   /* ------- Semantic Colors ------- */
   --color-success: #4ECDC4;
@@ -27,12 +28,16 @@
   --color-error-light: #FEF2F2;
   --color-warning: #FFB347;
   --color-info: #55A3FF;
+  --color-result-correct: #2ecc71;   /* game answer correct */
+  --color-result-wrong: #e74c3c;     /* game answer wrong   */
 
   /* ------- Background Colors ------- */
   --color-bg-white: #FFFFFF;
   --color-bg-light: #F8F7FC;
   --color-bg-gray: #F1F0F5;
   --color-bg-dark: #1A0A3E;
+  --color-bg-hero-deep: #1a0a3c;   /* darkest hero gradient stop  */
+  --color-bg-hero-mid: #3a1278;    /* mid-point hero gradient stop */
   --color-bg-hero: linear-gradient(135deg, #6C3FC5 0%, #8B5CF6 50%, #A78BFA 100%);
   /* Aliases used across components */
   --color-background-secondary: var(--color-bg-light);

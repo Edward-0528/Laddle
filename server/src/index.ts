@@ -21,6 +21,7 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 
 import { logger } from './utils/logger';
+import { EVENTS } from './types/events';
 import {
   CreateGameSchema,
   JoinGameSchema,
@@ -191,7 +192,7 @@ io.on('connection', (socket) => {
       socket.join(code);
 
       // Notify the host of their role so the client does not need URL params
-      socket.emit('game:role', { role: 'host', code });
+      socket.emit(EVENTS.GAME_ROLE, { role: 'host', code });
 
       callback({ code });
     }
@@ -223,10 +224,10 @@ io.on('connection', (socket) => {
       socket.join(code);
 
       // Notify the player of their role
-      socket.emit('game:role', { role: 'player', code });
+      socket.emit(EVENTS.GAME_ROLE, { role: 'player', code });
 
       // Broadcast updated player list to all participants
-      io.to(code).emit('lobby:update', getPlayerList(code));
+      io.to(code).emit(EVENTS.LOBBY_UPDATE, getPlayerList(code));
 
       callback({ ok: true });
     }
@@ -235,7 +236,7 @@ io.on('connection', (socket) => {
   // -----------------------------------------------------------------------
   // host:start - Host starts the quiz
   // -----------------------------------------------------------------------
-  socket.on('host:start', (payload: unknown) => {
+  socket.on(EVENTS.HOST_START, (payload: unknown) => {
     if (!checkRateLimit(socket.id, 'host:start', RATE_LIMITS.hostStart)) {
       return;
     }
@@ -260,7 +261,7 @@ io.on('connection', (socket) => {
   // -----------------------------------------------------------------------
   // player:answer - Player submits an answer
   // -----------------------------------------------------------------------
-  socket.on('player:answer', (payload: unknown) => {
+  socket.on(EVENTS.PLAYER_ANSWER, (payload: unknown) => {
     if (!checkRateLimit(socket.id, 'player:answer', RATE_LIMITS.playerAnswer)) {
       return;
     }
@@ -278,7 +279,7 @@ io.on('connection', (socket) => {
       const gameForCount = getGame(code);
       if (gameForCount) {
         const count = Object.keys(gameForCount.answers).length;
-        io.to(code).emit('game:answer:count', count);
+        io.to(code).emit(EVENTS.GAME_ANSWER_COUNT, count);
       }
 
       // If every player has now answered, end the question early
@@ -296,7 +297,7 @@ io.on('connection', (socket) => {
   // -----------------------------------------------------------------------
   // lobby:request - Client requests a fresh player list (used on mount)
   // -----------------------------------------------------------------------
-  socket.on('lobby:request', (payload: unknown) => {
+  socket.on(EVENTS.LOBBY_REQUEST, (payload: unknown) => {
     const parsed = (payload as { code?: string })?.code;
     if (typeof parsed !== 'string' || !parsed) return;
     const code = parsed.toUpperCase().trim();
@@ -304,7 +305,7 @@ io.on('connection', (socket) => {
     if (!game) return;
     // Ensure socket is in the room before sending
     socket.join(code);
-    socket.emit('lobby:update', getPlayerList(code));
+    socket.emit(EVENTS.LOBBY_UPDATE, getPlayerList(code));
   });
 
   // -----------------------------------------------------------------------
