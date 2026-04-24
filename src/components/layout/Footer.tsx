@@ -17,8 +17,8 @@ const Footer: React.FC = () => {
           {/* Brand Column */}
           <div className="footer-brand">
             <Link to="/" className="footer-logo">
-              <span className="footer-logo-icon">L</span>
-              <span className="footer-logo-text">Ladle</span>
+              <span className="footer-logo-icon">🎉</span>
+              <span className="footer-logo-text">PopPop!</span>
             </Link>
             <p className="footer-tagline">
               The interactive quiz platform for classrooms, events, and teams.
@@ -53,7 +53,7 @@ const Footer: React.FC = () => {
 
         <div className="footer-bottom">
           <p className="footer-copyright">
-            {currentYear} Ladle. All rights reserved.
+            {currentYear} PopPop!. All rights reserved.
           </p>
         </div>
       </div>

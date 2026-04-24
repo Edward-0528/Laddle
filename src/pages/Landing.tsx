@@ -1,12 +1,13 @@
 // ---------------------------------------------------------------------------
 // Landing Page
-// The public-facing home page for the Ladle platform. Designed to match the
-// LearnFun trivia quiz aesthetic with a purple hero section, yellow CTAs,
+// The public-facing home page for the PopPop! platform. Designed to match the
+// playful quiz aesthetic with a purple hero section, yellow CTAs,
 // feature cards, how-it-works steps, and category browsing.
 // ---------------------------------------------------------------------------
 
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { QRCodeSVG } from 'qrcode.react';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import './Landing.css';
@@ -34,7 +35,7 @@ const Landing: React.FC = () => {
         <div className="container hero-inner">
           <div className="hero-content">
             <h1 className="hero-title">
-              Get Ready for a Fun Quiz!
+              Get Ready for a PopPop! Quiz!
             </h1>
             <p className="hero-subtitle">
               Train your brain with smart, community-created quizzes. Host
@@ -67,10 +68,25 @@ const Landing: React.FC = () => {
           <div className="hero-illustration">
             <div className="hero-illustration-card">
               <div className="hero-mascot">
+                <Link to="/demo" className="hero-qr-link" title="Try the live demo!">
+                  <div className="hero-qr-wrapper">
+                    <QRCodeSVG
+                      value={`${window.location.origin}/demo`}
+                      size={110}
+                      bgColor="transparent"
+                      fgColor="#6C3FC5"
+                      level="M"
+                    />
+                    <span className="hero-qr-label">Scan to try on your phone</span>
+                  </div>
+                </Link>
                 <div className="mascot-body">
-                  <span className="mascot-eyes">? !</span>
+                  <span className="mascot-eyes">🎉</span>
                 </div>
-                <p className="mascot-text">Let's start Quiz!</p>
+                <p className="mascot-text">Try It Out Now!</p>
+                <Link to="/demo" className="hero-demo-cta">
+                  👉 Launch Demo
+                </Link>
               </div>
             </div>
           </div>

@@ -25,6 +25,7 @@ const JoinGame = lazy(() => import('./pages/JoinGame'));
 const Game = lazy(() => import('./pages/Game'));
 
 const Library = lazy(() => import('./pages/Library'));
+const Demo = lazy(() => import('./pages/Demo'));
 
 function PageLoader() {
   return (
@@ -58,6 +59,7 @@ function App() {
               <Route path="/join" element={<JoinGame />} />
               <Route path="/game/:code" element={<Game />} />
               <Route path="/library" element={<Library />} />
+              <Route path="/demo" element={<Demo />} />
 
               {/* Protected routes */}
               <Route

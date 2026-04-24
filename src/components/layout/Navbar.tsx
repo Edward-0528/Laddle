@@ -39,8 +39,8 @@ const Navbar: React.FC<NavbarProps> = ({
       <div className="navbar-inner container">
         {/* Logo */}
         <Link to="/" className="navbar-logo" onClick={closeMobileMenu}>
-          <span className="navbar-logo-icon">L</span>
-          <span className="navbar-logo-text">Ladle</span>
+          <span className="navbar-logo-icon">🎉</span>
+          <span className="navbar-logo-text">PopPop!</span>
         </Link>
 
         {/* Desktop Navigation Links */}
@@ -50,6 +50,12 @@ const Navbar: React.FC<NavbarProps> = ({
             className={`navbar-link ${isActive('/') ? 'navbar-link-active' : ''}`}
           >
             Home
+          </Link>
+          <Link
+            to="/demo"
+            className={`navbar-link ${isActive('/demo') ? 'navbar-link-active' : ''}`}
+          >
+            🎯 Try Demo
           </Link>
           <Link
             to="/join"
@@ -118,6 +124,9 @@ const Navbar: React.FC<NavbarProps> = ({
         <div className="navbar-mobile-menu">
           <Link to="/" className="navbar-mobile-link" onClick={closeMobileMenu}>
             Home
+          </Link>
+          <Link to="/demo" className="navbar-mobile-link" onClick={closeMobileMenu}>
+            🎯 Try Demo
           </Link>
           <Link to="/join" className="navbar-mobile-link" onClick={closeMobileMenu}>
             Join Quiz
