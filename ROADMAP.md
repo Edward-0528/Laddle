@@ -9,10 +9,24 @@
 ## AI Cost Model (read before implementing AI features)
 
 ### The problem
-Every AI generation call costs real money (OpenAI GPT-4o is ~$0.005 per quiz generation
-at ~1 500 tokens). If you offer it free and unlimited, a single heavy user can drain $50/month.
+Every AI generation call costs real money. If you offer it free and unlimited, a single
+heavy user can drain your budget fast.
 
-### Recommended model: Token-bucket freemium
+### Chosen model: `gemini-2.5-flash-lite` (Gemini API / AI Studio)
+Confirmed stable as of April 2026. Cheapest production-ready model in the Gemini lineup.
+
+| Model | Status | Approx. cost per quiz (10 questions) |
+|---|---|---|
+| GPT-4o | Active | ~$0.012 |
+| Gemini 2.5 Flash | Stable | ~$0.0005 |
+| **Gemini 2.5 Flash-Lite** | **Stable — use this** | **~$0.0001** |
+| Gemini 3.1 Flash-Lite | Preview — not prod-ready | TBD |
+| Gemini 2.0 Flash | **Deprecated — do not use** | — |
+
+Free tier on AI Studio: **1 500 requests/day** during development — no billing needed to start.
+When Gemini 3.1 Flash-Lite exits preview, swap the model string in `aiGenerator.ts` — zero other changes.
+
+### Recommended billing model: Token-bucket freemium
 
 | Tier | Price | AI generations/month | Notes |
 |---|---|---|---|
@@ -24,24 +38,23 @@ at ~1 500 tokens). If you offer it free and unlimited, a single heavy user can d
 ### Implementation plan (before writing any AI code)
 1. Add a `plan` field (`free | educator | pro | site`) to the Firestore `users` collection.
 2. Add an `aiCreditsUsed` counter (resets monthly via a Cloud Function cron).
-3. Gate every AI API call server-side — never call OpenAI from the client.
+3. Gate every AI API call server-side — never expose `GEMINI_API_KEY` to the client.
 4. Return a `402 Payment Required` with a `reason: 'quota_exceeded'` JSON body when the
    limit is hit. The client shows an upgrade modal.
 5. Use **Stripe** for billing. One-time setup, then it runs itself.
-6. Add `cost_per_call` logging to every AI request so you can audit your OpenAI bill
+6. Add `cost_per_call` logging to every AI request so you can audit your Gemini bill
    against Stripe revenue at any time.
 
 ### Cost ceiling per user (worst case)
-- GPT-4o: ~$0.005 per call × 100 calls = **$0.50/user/month** on Educator tier
+- Gemini 2.5 Flash-Lite: ~$0.0001 per call × 100 calls = **$0.01/user/month** on Educator tier
 - Revenue on Educator tier: **$9.00/user/month**
-- Gross margin on AI alone: **~94%**
+- Gross margin on AI alone: **~99.9%**
 
 ### What to avoid
-- Do NOT expose your OpenAI API key in the Vite/client bundle (use `OPENAI_API_KEY` in the
-  server `.env` only).
+- Do NOT expose `GEMINI_API_KEY` in the Vite/client bundle — server `.env` only.
 - Do NOT stream responses to the client on free tier (streaming is harder to quota-limit).
-- Do NOT let users generate questions for every individual question — generate a full quiz
-  (10 questions) per credit to keep call count low.
+- Do NOT let users generate per question — generate a full quiz (10 questions) per credit
+  to keep call count low.
 
 ---
 
@@ -78,9 +91,13 @@ at ~1 500 tokens). If you offer it free and unlimited, a single heavy user can d
 
 - [ ] **2.1 AI question generation**
   - > **Cost gate must be implemented (see top of file) before this goes live.**
-  - "Generate with AI" button in QuizBuilder — prompt: topic + grade level + question count
-  - Server-side OpenAI call (`gpt-4o`, structured output / JSON mode)
-  - Quota enforcement: check `aiCreditsUsed < plan limit` before calling OpenAI
+  - Model: **`gemini-2.5-flash-lite`** (stable as of April 2026, cheapest in 2.5 family, supports structured JSON output)
+  - Upgrade path: when `gemini-3.1-flash-lite` exits preview, swap the model string — zero other code changes needed
+  - Package: `@google/generative-ai` on the server (`npm install @google/generative-ai` in `server/`)
+  - API key: `GEMINI_API_KEY` in `server/.env` — never exposed to client
+  - "Generate with AI" button in QuizBuilder — inputs: topic, grade level, question count (max 10 per credit)
+  - Server-side Gemini call with JSON mode / `responseSchema` for structured output
+  - Quota enforcement: check `aiCreditsUsed < plan limit` before calling Gemini; return `402` if exceeded
   - Return generated questions in the same `ImportResult` format so the existing ImportModal handles review/selection
   - Files: `server/src/services/aiGenerator.ts` (new), `server/src/index.ts`, `src/pages/QuizBuilder.tsx`
 
