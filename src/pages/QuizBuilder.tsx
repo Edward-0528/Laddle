@@ -12,7 +12,8 @@ import { createQuiz, getQuiz, updateQuiz } from '../services/quizzes';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Card from '../components/ui/Card';
-import type { QuizQuestion, QuizSettings } from '../types/quiz';
+import ImportModal from '../components/ui/ImportModal';
+import type { QuizQuestion, QuizSettings, QuestionType } from '../types/quiz';
 import './QuizBuilder.css';
 
 // ---------------------------------------------------------------------------
@@ -45,6 +46,7 @@ function createEmptyQuestion(): QuizQuestion {
     choices: ['', '', '', ''],
     correctAnswerIndex: 0,
     timeLimit: 30,
+    questionType: 'multiple-choice',
   };
 }
 
@@ -73,6 +75,7 @@ const QuizBuilder: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingQuiz, setIsLoadingQuiz] = useState(!!editId);
   const [error, setError] = useState('');
+  const [showImportModal, setShowImportModal] = useState(false);
 
   // Load existing quiz if editing
   useEffect(() => {
@@ -107,7 +110,7 @@ const QuizBuilder: React.FC = () => {
   // Question Editing Helpers
   // ---------------------------------------------------------------------------
 
-  function updateQuestionField(index: number, field: keyof QuizQuestion, value: any) {
+  function updateQuestionField(index: number, field: keyof QuizQuestion, value: unknown) {
     setQuestions((prev) => {
       const updated = [...prev];
       updated[index] = { ...updated[index], [field]: value };
@@ -125,9 +128,71 @@ const QuizBuilder: React.FC = () => {
     });
   }
 
+  function addChoice(qIndex: number) {
+    setQuestions((prev) => {
+      const updated = [...prev];
+      const q = updated[qIndex];
+      if (q.choices.length >= 4) return prev;
+      updated[qIndex] = { ...q, choices: [...q.choices, ''] };
+      return updated;
+    });
+  }
+
+  function removeChoice(qIndex: number, cIndex: number) {
+    setQuestions((prev) => {
+      const updated = [...prev];
+      const q = updated[qIndex];
+      if (q.choices.length <= 2) return prev;
+      const choices = q.choices.filter((_, i) => i !== cIndex);
+      const correctAnswerIndex =
+        q.correctAnswerIndex >= choices.length
+          ? choices.length - 1
+          : q.correctAnswerIndex === cIndex
+          ? 0
+          : q.correctAnswerIndex > cIndex
+          ? q.correctAnswerIndex - 1
+          : q.correctAnswerIndex;
+      updated[qIndex] = { ...q, choices, correctAnswerIndex };
+      return updated;
+    });
+  }
+
+  function setQuestionType(qIndex: number, type: QuestionType) {
+    setQuestions((prev) => {
+      const updated = [...prev];
+      const q = updated[qIndex];
+      if (type === 'true-false') {
+        updated[qIndex] = {
+          ...q,
+          questionType: 'true-false',
+          choices: ['True', 'False'],
+          correctAnswerIndex: 0,
+        };
+      } else {
+        // Switching back to MC: restore to 4 empty choices if was T/F
+        const wasLocked = q.questionType === 'true-false';
+        updated[qIndex] = {
+          ...q,
+          questionType: 'multiple-choice',
+          choices: wasLocked ? ['', '', '', ''] : q.choices,
+          correctAnswerIndex: 0,
+        };
+      }
+      return updated;
+    });
+  }
+
   function addQuestion() {
     const newQ = createEmptyQuestion();
     setQuestions((prev) => [...prev, newQ]);
+    setActiveQuestionIndex(questions.length);
+  }
+
+  function handleImportQuestions(imported: QuizQuestion[]) {
+    setQuestions((prev) => {
+      const merged = [...prev, ...imported];
+      return merged;
+    });
     setActiveQuestionIndex(questions.length);
   }
 
@@ -329,9 +394,14 @@ const QuizBuilder: React.FC = () => {
             <h2 className="builder-section-title">
               Questions ({questions.length})
             </h2>
-            <Button variant="secondary" size="sm" onClick={addQuestion}>
-              Add Question
-            </Button>
+            <div className="builder-questions-actions">
+              <Button variant="ghost" size="sm" onClick={() => setShowImportModal(true)}>
+                Import
+              </Button>
+              <Button variant="secondary" size="sm" onClick={addQuestion}>
+                Add Question
+              </Button>
+            </div>
           </div>
 
           {/* Question tabs */}
@@ -363,6 +433,27 @@ const QuizBuilder: React.FC = () => {
                 )}
               </div>
 
+              {/* Question type toggle */}
+              <div className="question-type-row">
+                <span className="builder-label">Question Type</span>
+                <div className="question-type-toggle">
+                  <button
+                    className={`type-btn ${(activeQuestion.questionType ?? 'multiple-choice') === 'multiple-choice' ? 'active' : ''}`}
+                    onClick={() => setQuestionType(activeQuestionIndex, 'multiple-choice')}
+                    type="button"
+                  >
+                    Multiple Choice
+                  </button>
+                  <button
+                    className={`type-btn ${activeQuestion.questionType === 'true-false' ? 'active' : ''}`}
+                    onClick={() => setQuestionType(activeQuestionIndex, 'true-false')}
+                    type="button"
+                  >
+                    True / False
+                  </button>
+                </div>
+              </div>
+
               <Input
                 label="Question Text"
                 placeholder="Type your question here"
@@ -373,36 +464,83 @@ const QuizBuilder: React.FC = () => {
                 fullWidth
               />
 
-              <div className="choices-grid">
-                {activeQuestion.choices.map((choice, cIndex) => (
-                  <div key={cIndex} className="choice-editor">
-                    <label className="choice-radio">
-                      <input
-                        type="radio"
-                        name={`correct-${activeQuestionIndex}`}
-                        checked={activeQuestion.correctAnswerIndex === cIndex}
-                        onChange={() =>
-                          updateQuestionField(activeQuestionIndex, 'correctAnswerIndex', cIndex)
-                        }
-                      />
-                      <span className="choice-radio-indicator" />
-                    </label>
-                    <Input
-                      placeholder={`Answer ${cIndex + 1}`}
-                      value={choice}
-                      onChange={(e) => updateChoice(activeQuestionIndex, cIndex, e.target.value)}
-                      fullWidth
-                    />
-                  </div>
-                ))}
+              <div className="choices-section">
+                <div className="choices-section-header">
+                  <span className="builder-label">Answer Choices</span>
+                  {activeQuestion.questionType !== 'true-false' && (
+                    <div className="choices-count-actions">
+                      {activeQuestion.choices.length < 4 && (
+                        <button
+                          className="choice-count-btn add"
+                          onClick={() => addChoice(activeQuestionIndex)}
+                          type="button"
+                        >
+                          + Add Choice
+                        </button>
+                      )}
+                      <span className="choices-count-label">
+                        {activeQuestion.choices.length} of 4
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="choices-list">
+                  {activeQuestion.choices.map((choice, cIndex) => (
+                    <div key={cIndex} className="choice-editor">
+                      <label className="choice-radio">
+                        <input
+                          type="radio"
+                          name={`correct-${activeQuestionIndex}`}
+                          checked={activeQuestion.correctAnswerIndex === cIndex}
+                          onChange={() =>
+                            updateQuestionField(activeQuestionIndex, 'correctAnswerIndex', cIndex)
+                          }
+                        />
+                        <span className="choice-radio-indicator" />
+                      </label>
+                      <span className="choice-letter">
+                        {String.fromCharCode(65 + cIndex)}
+                      </span>
+                      {activeQuestion.questionType === 'true-false' ? (
+                        <span className="choice-tf-label">{choice}</span>
+                      ) : (
+                        <Input
+                          placeholder={`Choice ${String.fromCharCode(65 + cIndex)}`}
+                          value={choice}
+                          onChange={(e) => updateChoice(activeQuestionIndex, cIndex, e.target.value)}
+                          fullWidth
+                        />
+                      )}
+                      {activeQuestion.questionType !== 'true-false' &&
+                        activeQuestion.choices.length > 2 && (
+                          <button
+                            className="choice-remove-btn"
+                            onClick={() => removeChoice(activeQuestionIndex, cIndex)}
+                            type="button"
+                            aria-label="Remove choice"
+                          >
+                            &times;
+                          </button>
+                        )}
+                    </div>
+                  ))}
+                </div>
+                <p className="choices-hint">
+                  Select the radio button next to the correct answer.
+                </p>
               </div>
-              <p className="choices-hint">
-                Select the radio button next to the correct answer.
-              </p>
             </div>
           )}
         </Card>
       </div>
+
+      {showImportModal && (
+        <ImportModal
+          onImport={handleImportQuestions}
+          onClose={() => setShowImportModal(false)}
+        />
+      )}
     </div>
   );
 };

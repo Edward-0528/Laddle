@@ -3,12 +3,15 @@
 // Shared types for quiz data structures used across the application.
 // ---------------------------------------------------------------------------
 
+export type QuestionType = 'multiple-choice' | 'true-false';
+
 export interface QuizQuestion {
   id: string;
   text: string;
   choices: string[];
   correctAnswerIndex: number;
   timeLimit: number;
+  questionType?: QuestionType;
   points?: number;
   imageUrl?: string;
 }
