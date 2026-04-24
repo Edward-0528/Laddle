@@ -12,7 +12,7 @@
 // in isolation. No Firestore, no socket, no React state.
 // ---------------------------------------------------------------------------
 
-import * as XLSX from 'xlsx';
+import * as XLSX from '@e965/xlsx';
 import type { QuizQuestion, QuestionType } from '../types/quiz';
 
 // ---------------------------------------------------------------------------

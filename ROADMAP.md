@@ -153,9 +153,9 @@ When Gemini 3.1 Flash-Lite exits preview, swap the model string in `aiGenerator.
 
 ## Technical Debt (resolve before scaling)
 
-- [ ] **TD-1** Replace `xlsx` with `exceljs` — `npm audit` reports 1 critical + 6 high vulns in current xlsx package
-- [ ] **TD-2** Add `husky` + `lint-staged` to `package.json` so the emoji pre-commit hook installs automatically for all contributors (`npm install`), not just locally
-- [ ] **TD-3** Update `server/src/validators/schemas.ts` to accept `questionType: 'multiple-choice' | 'true-false'` — currently T/F questions imported via the new import feature may be stripped by Zod validation at game creation
+- [x] **TD-1** Replace `xlsx` with `@e965/xlsx` (CVE-free community fork, identical API, zero code changes beyond the import line) — also ran `npm audit fix`, cleared all 9 remaining vulnerabilities across lodash, vite, rollup, react-router, socket.io-parser, protobufjs, etc.
+- [x] **TD-2** Add `husky` + `lint-staged` to `package.json` — emoji pre-commit hook now lives in `.husky/pre-commit` and auto-installs for all contributors on `npm install` via the `prepare` script; old manual `.git/hooks/pre-commit` removed
+- [x] **TD-3** Updated `server/src/validators/schemas.ts` — `QuestionSchema` now accepts `questionType: z.enum(['multiple-choice', 'true-false']).optional()`; T/F imported questions no longer stripped by Zod at game creation
 - [ ] **TD-4** Add client-side caching (React Query or SWR) for Firestore reads — prevents hot-quiz budget spikes
 - [ ] **TD-5** Set up Stripe billing before any paid tier goes live
 

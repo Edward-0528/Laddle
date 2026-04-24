@@ -13,7 +13,8 @@
     "start": "cd server && npm start",
     "install:all": "npm install && cd server && npm install",
     "preview": "vite preview",
-    "lint:emoji": "bash scripts/check-no-emoji.sh"
+    "lint:emoji": "bash scripts/check-no-emoji.sh",
+    "prepare": "husky"
   },
   "keywords": [
     "quiz",
@@ -26,10 +27,13 @@
   "license": "MIT",
   "devDependencies": {
     "concurrently": "^9.2.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
     "typescript": "~5.8.3",
     "vite": "^7.1.2"
   },
   "dependencies": {
+    "@e965/xlsx": "^0.20.3",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react-swc": "^4.0.0",
@@ -38,7 +42,10 @@
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.8.0",
-    "socket.io-client": "^4.8.1",
-    "xlsx": "^0.18.5"
+    "socket.io-client": "^4.8.1"
+  },
+  "lint-staged": {
+    "src/**/*.{ts,tsx,css}": [],
+    "server/src/**/*.{ts}": []
   }
 }

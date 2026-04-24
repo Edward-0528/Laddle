@@ -29,6 +29,7 @@ export const QuestionSchema = z.object({
     .max(6),
   answerIndex: z.number().int().min(0),
   durationSec: z.number().int().min(5).max(120),
+  questionType: z.enum(['multiple-choice', 'true-false']).optional(),
 }).refine(
   (data) => data.answerIndex < data.choices.length,
   { message: 'answerIndex must be less than the number of choices' }
