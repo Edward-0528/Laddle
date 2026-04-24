@@ -6,7 +6,7 @@
 // ---------------------------------------------------------------------------
 
 import { Suspense, lazy } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -53,7 +53,7 @@ function App() {
           <Suspense fallback={<PageLoader />}>
             <Routes>
               {/* Public routes */}
-              <Route path="/" element={<Landing />} />
+              <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <Landing />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
               <Route path="/join" element={<JoinGame />} />

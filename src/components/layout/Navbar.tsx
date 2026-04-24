@@ -51,12 +51,14 @@ const Navbar: React.FC<NavbarProps> = ({
           >
             Home
           </Link>
-          <Link
-            to="/demo"
-            className={`navbar-link ${isActive('/demo') ? 'navbar-link-active' : ''}`}
-          >
-            Try Demo
-          </Link>
+          {!isAuthenticated && (
+            <Link
+              to="/demo"
+              className={`navbar-link ${isActive('/demo') ? 'navbar-link-active' : ''}`}
+            >
+              Try Demo
+            </Link>
+          )}
           <Link
             to="/join"
             className={`navbar-link ${isActive('/join') ? 'navbar-link-active' : ''}`}
@@ -131,6 +133,11 @@ const Navbar: React.FC<NavbarProps> = ({
           <Link to="/join" className="navbar-mobile-link" onClick={closeMobileMenu}>
             Join Quiz
           </Link>
+          {!isAuthenticated && (
+            <Link to="/demo" className="navbar-mobile-link" onClick={closeMobileMenu}>
+              Try Demo
+            </Link>
+          )}
           {isAuthenticated ? (
             <>
               <Link to="/dashboard" className="navbar-mobile-link" onClick={closeMobileMenu}>
