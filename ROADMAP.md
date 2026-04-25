@@ -118,26 +118,26 @@ When Gemini 3.1 Flash-Lite exits preview, swap the model string in `aiGenerator.
 ## Tier 3 — Moat Builders
 > Hard to copy once you have them. Build after Tier 1 + 2 are solid.
 
-- [ ] **3.1 Student accounts with progress tracking**
+- [x] **3.1 Student accounts with progress tracking**
   - Optional student sign-up (email or Google)
   - Track per-student: games played, average score, accuracy by subject
   - Personal dashboard with streaks and weak-topic highlights
   - Files: new `src/pages/StudentDashboard.tsx`, `src/types/user.ts`, Firestore schema update
 
-- [ ] **3.2 Curriculum standards tagging**
+- [x] **3.2 Curriculum standards tagging**
   - Tag each question with a CCSS / NGSS standard code (e.g. `CCSS.MATH.3.OA.A.1`)
   - Searchable standards browser in the Library
   - Filter quiz library by standard
   - Files: `src/types/quiz.ts`, `src/pages/QuizBuilder.tsx`, `src/pages/Library.tsx`, `scripts/seedLibrary.ts`
 
-- [ ] **3.3 Public quiz marketplace**
+- [x] **3.3 Public quiz marketplace**
   - Creators can publish quizzes as `visibility: 'public'`
   - Browse page: search by subject, grade, rating
   - "Fork" button: copy any public quiz to your own dashboard
   - Rating / upvote system
   - Files: new `src/pages/Marketplace.tsx`, `src/services/quizzes.ts`, Firestore rules update
 
-- [ ] **3.4 Team mode**
+- [x] **3.4 Team mode**
   - Players grouped into teams at lobby join
   - Individual scores aggregate to team totals in real time
   - Team leaderboard on game screen alongside individual leaderboard
