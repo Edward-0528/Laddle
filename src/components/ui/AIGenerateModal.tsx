@@ -58,7 +58,7 @@ const AIGenerateModal: React.FC<Props> = ({ onGenerate, onClose }) => {
         </div>
 
         <p className="ai-modal-subtitle">
-          Powered by <strong>Gemini 2.5 Flash-Lite</strong>. Questions will be added to your quiz for review — edit anything before saving.
+          Powered by <strong>Gemini</strong>. Questions will be added to your quiz for review — edit anything before saving.
         </p>
 
         <form className="ai-modal-form" onSubmit={handleSubmit}>

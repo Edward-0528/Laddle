@@ -20,7 +20,7 @@ interface ServerQuestion {
   questionType: 'multiple-choice' | 'true-false';
 }
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:3001';
+const SERVER_URL = import.meta.env.VITE_SERVER_URL ?? import.meta.env.VITE_SOCKET_URL ?? 'http://localhost:3001';
 
 /**
  * Asks the server to generate `count` questions on `topic` for `gradeLevel`.

@@ -3,7 +3,7 @@
 // Wraps the server billing endpoints for Stripe Checkout.
 // ---------------------------------------------------------------------------
 
-const API_BASE = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
+const API_BASE = import.meta.env.VITE_SERVER_URL || import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001';
 
 /**
  * Creates a Stripe Checkout session and redirects the user to it.
