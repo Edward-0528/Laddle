@@ -8,9 +8,11 @@
 // ---------------------------------------------------------------------------
 
 import { useState, useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { socket } from '../services/socket';
 import { EVENTS } from '../types/events';
+import { useAuth } from '../context/AuthContext';
+import { saveGameResult } from '../services/gameResults';
 import { QRCodeSVG } from 'qrcode.react';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
@@ -55,6 +57,14 @@ interface QuestionResult {
   leaderboard: RankedPlayer[];
 }
 
+/** Enriched payload emitted by server when all questions are done */
+interface GameResultsPayload {
+  leaderboard: RankedPlayer[];
+  quizTitle?: string;
+  code: string;
+  playedAt: number;
+}
+
 // ---------------------------------------------------------------------------
 // Choice color theme (Kahoot-style: red, blue, yellow, green)
 // ---------------------------------------------------------------------------
@@ -77,6 +87,8 @@ type RevealPhase = 'correct' | 'scores' | 'leaderboard';
 
 const Game = () => {
   const { code } = useParams<{ code: string }>();
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const [gameState, setGameState] = useState<'lobby' | 'question' | 'reveal' | 'results' | 'ended'>('lobby');
   const [players, setPlayers] = useState<Player[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState<GameData | null>(null);
@@ -88,14 +100,16 @@ const Game = () => {
   const [leaderboard, setLeaderboard] = useState<RankedPlayer[]>([]);
   const [isHost, setIsHost] = useState(false);
   const [questionTransition, setQuestionTransition] = useState(false);
-  // Live answer counts visible to host during a question
   const [answerCount, setAnswerCount] = useState(0);
-  // Animated reveal sub-phase
   const [revealPhase, setRevealPhase] = useState<RevealPhase>('correct');
-  // Tracks which player scores are being animated
   const [animatedScores, setAnimatedScores] = useState<Record<string, number>>({});
+  const [savedResultId, setSavedResultId] = useState<string | null>(null);
+  const [quizTitle, setQuizTitle] = useState<string>('');
+  const [reconnectBanner, setReconnectBanner] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Ref mirrors isHost so closures registered with [] deps can read current value
+  const isHostRef = useRef(false);
 
   const joinUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/join?code=${code}`
@@ -103,6 +117,7 @@ const Game = () => {
 
   useEffect(() => {
     socket.on(EVENTS.GAME_ROLE, (data: { role: 'host' | 'player' }) => {
+      isHostRef.current = data.role === 'host';
       setIsHost(data.role === 'host');
     });
 
@@ -164,9 +179,28 @@ const Game = () => {
       }, 2000);
     });
 
-    socket.on(EVENTS.GAME_RESULTS, (data: RankedPlayer[]) => {
-      setLeaderboard(data);
+    socket.on(EVENTS.GAME_RESULTS, (data: GameResultsPayload) => {
+      setLeaderboard(data.leaderboard);
+      setQuizTitle(data.quizTitle ?? '');
       setGameState('results');
+      // Host saves the result to Firestore
+      if (isHostRef.current && user) {
+        saveGameResult({
+          hostUid: user.uid,
+          quizTitle: data.quizTitle ?? 'Untitled Quiz',
+          gameCode: data.code,
+          playedAt: data.playedAt,
+          playerCount: data.leaderboard.length,
+          players: data.leaderboard.map((p) => ({ name: p.name, score: p.score, rank: p.rank })),
+        }).then((id) => {
+          if (id) setSavedResultId(id);
+        });
+      }
+    });
+
+    socket.on(EVENTS.PLAYER_RECONNECTED, () => {
+      setReconnectBanner(true);
+      setTimeout(() => setReconnectBanner(false), 4000);
     });
 
     socket.on(EVENTS.GAME_ENDED, () => {
@@ -178,7 +212,10 @@ const Game = () => {
     });
 
     const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('host') === 'true') setIsHost(true);
+    if (urlParams.get('host') === 'true') {
+      isHostRef.current = true;
+      setIsHost(true);
+    }
 
     if (code) {
       socket.emit(EVENTS.LOBBY_REQUEST, { code });
@@ -193,6 +230,7 @@ const Game = () => {
       socket.off(EVENTS.GAME_RESULTS);
       socket.off(EVENTS.GAME_ENDED);
       socket.off(EVENTS.PLAYER_ANSWER_ACK);
+      socket.off(EVENTS.PLAYER_RECONNECTED);
       if (timerRef.current) clearTimeout(timerRef.current);
       if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
     };
@@ -264,7 +302,7 @@ const Game = () => {
       <div className="game-page game-page-dark">
         <div className="container">
           <div className="podium-screen">
-            <h1 className="podium-title">Final Results</h1>
+            <h1 className="podium-title">{quizTitle ? `${quizTitle} — Final Results` : 'Final Results'}</h1>
             <div className="podium-stage">
               {podiumOrder.map((entry) => (
                 <div key={entry.rank} className={`podium-column podium-rank-${entry.rank}`}>
@@ -291,8 +329,13 @@ const Game = () => {
               </div>
             )}
             <div className="podium-actions">
-              <Button variant="primary" size="lg" onClick={() => window.location.href = '/'}>
-                Back to Home
+              {savedResultId && (
+                <Button variant="secondary" size="lg" onClick={() => navigate(`/results/${savedResultId}`)}>
+                  View Full Report
+                </Button>
+              )}
+              <Button variant="primary" size="lg" onClick={() => navigate('/dashboard')}>
+                Back to Dashboard
               </Button>
             </div>
           </div>
@@ -470,6 +513,28 @@ const Game = () => {
               </div>
             </div>
 
+            {/* Host controls */}
+            <div className="host-controls">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => socket.emit(EVENTS.HOST_SKIP, { code })}
+              >
+                Skip Question
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => {
+                  if (window.confirm('End game now and show final scores?')) {
+                    socket.emit(EVENTS.HOST_END_GAME, { code });
+                  }
+                }}
+              >
+                End Game
+              </Button>
+            </div>
+
           </div>
         </div>
       </div>
@@ -552,6 +617,9 @@ const Game = () => {
   return (
     <div className="game-page">
       <div className="container game-container">
+        {reconnectBanner && (
+          <div className="reconnect-banner">Connection restored — welcome back!</div>
+        )}
         <Card variant="elevated" padding="lg" className="game-card game-card-wide">
           <h2 className="game-heading">Game Lobby</h2>
           {isHost && <div className="host-badge">You are the Host</div>}

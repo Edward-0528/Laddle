@@ -61,25 +61,25 @@ When Gemini 3.1 Flash-Lite exits preview, swap the model string in `aiGenerator.
 ## Tier 1 — Table Stakes
 > Without these, the product is not production-ready.
 
-- [ ] **1.1 Game history & analytics**
+- [x] **1.1 Game history & analytics**
   - Save `GameResult` document to Firestore at game end (scores, time-per-question, accuracy per player)
   - Build `/results/:gameId` report page visible to the host
   - Show "Recent Games" list on the Dashboard
   - Files to touch: `server/src/services/gameManager.ts`, `src/services/quizzes.ts`, new `src/pages/Results.tsx`
 
-- [ ] **1.2 Rejoin / disconnect recovery**
+- [x] **1.2 Rejoin / disconnect recovery**
   - Track player socket state in `gameManager` (connected / disconnected)
   - On reconnect with matching `playerName + gameCode`, restore score and re-add to game
   - Show "Reconnecting..." UI on the player client instead of blank screen
   - Files: `server/src/services/gameManager.ts`, `server/src/index.ts`, `src/pages/Game.tsx`
 
-- [ ] **1.3 Host controls mid-game**
+- [x] **1.3 Host controls mid-game**
   - Skip question button (host view)
   - Pause / resume timer button
   - End game early button with confirmation dialog
   - Files: `server/src/index.ts`, `src/pages/Game.tsx`, `src/types/events.ts`
 
-- [ ] **1.4 Quick Launch from Dashboard**
+- [x] **1.4 Quick Launch from Dashboard**
   - "Quick Launch" button on each quiz card — one click opens a live lobby without extra steps
   - Show game code + QR code in a modal immediately
   - Files: `src/pages/Dashboard.tsx`, `src/pages/Dashboard.css`

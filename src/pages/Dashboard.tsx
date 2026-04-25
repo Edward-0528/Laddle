@@ -8,10 +8,13 @@ import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getUserQuizzes, deleteQuiz } from '../services/quizzes';
+import { getRecentGames } from '../services/gameResults';
 import { socket } from '../services/socket';
+import { QRCodeSVG } from 'qrcode.react';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import type { Quiz } from '../types/quiz';
+import type { GameResult } from '../types/gameResult';
 import './Dashboard.css';
 
 const Dashboard: React.FC = () => {
@@ -22,10 +25,14 @@ const Dashboard: React.FC = () => {
   const [error, setError] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [launchingId, setLaunchingId] = useState<string | null>(null);
+  const [recentGames, setRecentGames] = useState<GameResult[]>([]);
+  /** Non-null while the Quick Launch modal is open; holds the game code + join URL */
+  const [quickLaunch, setQuickLaunch] = useState<{ code: string; joinUrl: string } | null>(null);
 
   useEffect(() => {
     if (!user) return;
     loadQuizzes();
+    getRecentGames(user.uid, 5).then(setRecentGames).catch(() => {});
   }, [user]);
 
   async function loadQuizzes() {
@@ -76,15 +83,15 @@ const Dashboard: React.FC = () => {
     function doEmit() {
       socket.emit(
         'host:create',
-        { questions },
+        { questions, quizTitle: quiz.title },
         (response: { code?: string; error?: string }) => {
           setLaunchingId(null);
           if (response.error || !response.code) {
             setError(response.error ?? 'Failed to create game. Please try again.');
             return;
           }
-          console.log('[Ladle] Game created with code:', response.code);
-          navigate(`/game/${response.code}?host=true`);
+          const joinUrl = `${window.location.origin}/join?code=${response.code}`;
+          setQuickLaunch({ code: response.code, joinUrl });
         }
       );
     }
@@ -121,6 +128,37 @@ const Dashboard: React.FC = () => {
   return (
     <div className="dashboard">
       <div className="container">
+
+        {/* ---- Quick Launch Modal ---- */}
+        {quickLaunch && (
+          <div className="ql-overlay" onClick={() => setQuickLaunch(null)}>
+            <div className="ql-modal" onClick={(e) => e.stopPropagation()}>
+              <h2 className="ql-title">Game Ready!</h2>
+              <p className="ql-sub">Share the code or QR with your players, then open your host view.</p>
+              <div className="ql-qr-wrap">
+                <QRCodeSVG value={quickLaunch.joinUrl} size={160} bgColor="#ffffff" fgColor="#1a0a3c" level="M" />
+              </div>
+              <div className="ql-code-display">
+                <span className="ql-code-label">Game Code</span>
+                <span className="ql-code-value">{quickLaunch.code}</span>
+              </div>
+              <p className="ql-domain">{window.location.origin}/join</p>
+              <div className="ql-actions">
+                <Button variant="ghost" size="sm" onClick={() => setQuickLaunch(null)}>Cancel</Button>
+                <Button
+                  variant="primary"
+                  size="md"
+                  onClick={() => {
+                    setQuickLaunch(null);
+                    navigate(`/game/${quickLaunch.code}?host=true`);
+                  }}
+                >
+                  Enter Host View
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="dashboard-header">
           <div>
             <h1 className="dashboard-title">My Quizzes</h1>
@@ -217,6 +255,26 @@ const Dashboard: React.FC = () => {
               </Card>
             ))}
           </div>
+        )}
+
+        {/* ---- Recent Games ---- */}
+        {recentGames.length > 0 && (
+          <section className="recent-games-section">
+            <h2 className="recent-games-heading">Recent Games</h2>
+            <div className="recent-games-list">
+              {recentGames.map((g) => (
+                <div key={g.id} className="recent-game-row">
+                  <div className="recent-game-info">
+                    <span className="recent-game-title">{g.quizTitle}</span>
+                    <span className="recent-game-meta">
+                      {new Date(g.playedAt).toLocaleDateString()} · {g.playerCount} player{g.playerCount !== 1 ? 's' : ''} · Code: {g.gameCode}
+                    </span>
+                  </div>
+                  <Link to={`/results/${g.id}`} className="recent-game-link">View Report →</Link>
+                </div>
+              ))}
+            </div>
+          </section>
         )}
       </div>
     </div>

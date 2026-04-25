@@ -1,0 +1,196 @@
+/* ---------------------------------------------------------------------------
+   Results Page Styles
+   --------------------------------------------------------------------------- */
+
+.results-page {
+  padding: 2rem 0 4rem;
+  min-height: 60vh;
+}
+
+.results-loading,
+.results-error {
+  text-align: center;
+  padding: 4rem 2rem;
+  color: var(--color-text-secondary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+/* ---- Header ---- */
+.results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 2.5rem;
+}
+
+.results-title {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin: 0 0 0.4rem;
+}
+
+.results-meta {
+  font-size: 0.95rem;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.results-code {
+  font-family: monospace;
+  font-weight: 600;
+  color: var(--color-primary);
+  letter-spacing: 0.08em;
+}
+
+/* ---- Podium ---- */
+.results-podium {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 1rem;
+  margin-bottom: 3rem;
+}
+
+.results-podium-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 110px;
+}
+
+.results-podium-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 1.4rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.results-podium-rank-1 .results-podium-avatar {
+  width: 64px;
+  height: 64px;
+  font-size: 1.7rem;
+  background: var(--color-secondary);
+  color: #1a0a3c;
+}
+
+.results-podium-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--color-text-primary);
+  text-align: center;
+}
+
+.results-podium-score {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.results-podium-block {
+  width: 100%;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+}
+
+.results-podium-block-1 { height: 90px; background: var(--color-secondary); }
+.results-podium-block-2 { height: 65px; background: var(--color-primary-light, #c4b5fd); }
+.results-podium-block-3 { height: 45px; background: var(--color-border, #e2e8f0); }
+
+.results-podium-medal {
+  font-weight: 700;
+  font-size: 1rem;
+  color: #1a0a3c;
+}
+
+/* ---- Rankings table ---- */
+.results-table-wrap {
+  background: var(--color-bg-card, #fff);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+}
+
+.results-table-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  padding: 1.25rem 1.5rem 0.75rem;
+  margin: 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.results-table thead th {
+  text-align: left;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-subtle, #f8f9fa);
+}
+
+.results-table tbody tr {
+  border-top: 1px solid var(--color-border);
+  transition: background 0.15s;
+}
+
+.results-table tbody tr:hover {
+  background: var(--color-bg-subtle, #f8f9fa);
+}
+
+.results-row-top {
+  background: var(--color-primary-bg, #f0ebff);
+}
+
+.results-rank-cell {
+  padding: 1rem 1.5rem;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--color-primary);
+  width: 80px;
+}
+
+.results-name-cell {
+  padding: 1rem 1.5rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.results-score-cell {
+  padding: 1rem 1.5rem;
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--color-text-primary);
+  text-align: right;
+}
+
+@media (max-width: 600px) {
+  .results-title { font-size: 1.4rem; }
+  .results-podium { gap: 0.5rem; }
+  .results-podium-col { min-width: 80px; }
+  .results-table thead th,
+  .results-rank-cell,
+  .results-name-cell,
+  .results-score-cell { padding: 0.75rem 1rem; }
+}

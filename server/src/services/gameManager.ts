@@ -19,6 +19,8 @@ export interface Player {
   score: number;
   streak: number;
   previousRank: number;
+  connected: boolean;
+  disconnectedAt?: number;
 }
 
 export interface Question {
@@ -45,6 +47,7 @@ export interface Game {
   questionEndsAt?: number;
   answers: Record<string, PlayerAnswer>;
   createdAt: number;
+  quizTitle?: string;
 }
 
 export interface QuestionResult {
@@ -122,7 +125,7 @@ export function getActiveGameCount(): number {
  * Creates a new game and returns the generated code, or null if the server
  * has reached its maximum game capacity.
  */
-export function createGame(hostSocketId: string, questions: Question[]): string | null {
+export function createGame(hostSocketId: string, questions: Question[], quizTitle?: string): string | null {
   if (Object.keys(games).length >= MAX_ACTIVE_GAMES) {
     logger.warn('Game creation rejected - server at capacity', {
       activeGames: Object.keys(games).length,
@@ -141,6 +144,7 @@ export function createGame(hostSocketId: string, questions: Question[]): string 
     currentQuestionIndex: -1,
     answers: {},
     createdAt: Date.now(),
+    quizTitle,
   };
 
   logger.info('Game created', { code, hostSocketId, questionCount: questions.length });
@@ -174,7 +178,7 @@ export function addPlayer(
     return { ok: false, reason: 'This game is full. Maximum players reached.' };
   }
 
-  game.players[socketId] = { id: socketId, name, score: 0, streak: 0, previousRank: 0 };
+  game.players[socketId] = { id: socketId, name, score: 0, streak: 0, previousRank: 0, connected: true };
   logger.info('Player joined game', { code, playerName: name, socketId });
   return { ok: true };
 }
@@ -415,7 +419,22 @@ export function handleDisconnect(socketId: string): {
   }
 
   if (game.players[socketId]) {
-    const name = game.players[socketId].name;
+    const player = game.players[socketId];
+    const name = player.name;
+
+    // For active (in-progress) games, mark disconnected so the player can
+    // reconnect within the reconnect window instead of being removed.
+    if (game.state !== 'lobby' && game.state !== 'results' && game.state !== 'ended') {
+      player.connected = false;
+      player.disconnectedAt = Date.now();
+      logger.info('Player disconnected from active game', { code: game.code, playerName: name });
+      return {
+        type: 'player',
+        code: game.code,
+        players: Object.values(game.players).filter((p) => p.connected),
+      };
+    }
+
     delete game.players[socketId];
     delete game.answers[socketId];
     logger.info('Player left game', { code: game.code, playerName: name });
@@ -430,6 +449,82 @@ export function handleDisconnect(socketId: string): {
  */
 export function removeGame(code: string): void {
   delete games[code];
+}
+
+/**
+ * Returns only connected players (excludes temporarily disconnected ones).
+ * Used for lobby broadcasts so disconnected players are not shown.
+ */
+export function getConnectedPlayerList(code: string): Player[] {
+  const game = games[code];
+  return game ? Object.values(game.players).filter((p) => p.connected) : [];
+}
+
+/**
+ * Attempts to reconnect a player to an in-progress game.
+ * Matches by player name and disconnected status, then re-maps to the new socketId.
+ * Returns { ok: true, player } on success, { ok: false } if no match found.
+ */
+export function reconnectPlayer(
+  code: string,
+  newSocketId: string,
+  name: string
+): { ok: boolean; player?: Player } {
+  const game = games[code];
+  // Only reconnect to active games (not lobby or finished)
+  if (!game || game.state === 'lobby' || game.state === 'results' || game.state === 'ended') {
+    return { ok: false };
+  }
+
+  // Find a disconnected player with the matching name
+  const entry = Object.entries(game.players).find(
+    ([, p]) => p.name === name && !p.connected
+  );
+  if (!entry) return { ok: false };
+
+  const [oldSocketId, player] = entry;
+
+  // Move player record and any pending answer to the new socket ID
+  delete game.players[oldSocketId];
+  if (game.answers[oldSocketId]) {
+    game.answers[newSocketId] = game.answers[oldSocketId];
+    delete game.answers[oldSocketId];
+  }
+
+  player.id = newSocketId;
+  player.connected = true;
+  player.disconnectedAt = undefined;
+  game.players[newSocketId] = player;
+
+  logger.info('Player reconnected', { code, playerName: name, newSocketId });
+  return { ok: true, player };
+}
+
+/** How long a disconnected player slot is held open (90 seconds). */
+const RECONNECT_WINDOW_MS = 90_000;
+
+/**
+ * Removes player slots that have been disconnected longer than the reconnect window.
+ * Called on the same interval as cleanupIdleGames.
+ */
+export function cleanupDisconnectedPlayers(): void {
+  const now = Date.now();
+  for (const game of Object.values(games)) {
+    for (const [socketId, player] of Object.entries(game.players)) {
+      if (
+        !player.connected &&
+        player.disconnectedAt &&
+        now - player.disconnectedAt > RECONNECT_WINDOW_MS
+      ) {
+        delete game.players[socketId];
+        delete game.answers[socketId];
+        logger.info('Removed stale disconnected player slot', {
+          code: game.code,
+          playerName: player.name,
+        });
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

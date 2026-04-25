@@ -41,6 +41,7 @@ export const QuestionSchema = z.object({
  */
 export const CreateGameSchema = z.object({
   questions: z.array(QuestionSchema).min(1).max(50),
+  quizTitle: z.string().max(200).optional(),
 });
 
 /**
@@ -69,6 +70,13 @@ export const AnswerSchema = z.object({
   choiceIndex: z.number().int().min(0),
 });
 
+/**
+ * Schema for host:skip and host:end events — just requires the game code.
+ */
+export const GameActionSchema = z.object({
+  code: z.string().min(1).max(8).transform((val) => val.toUpperCase().trim()),
+});
+
 // ---------------------------------------------------------------------------
 // Exported Types
 // Derived from the Zod schemas so that runtime validation and compile-time
@@ -79,4 +87,5 @@ export type QuestionPayload = z.infer<typeof QuestionSchema>;
 export type CreateGamePayload = z.infer<typeof CreateGameSchema>;
 export type JoinGamePayload = z.infer<typeof JoinGameSchema>;
 export type StartGamePayload = z.infer<typeof StartGameSchema>;
+export type GameActionPayload = z.infer<typeof GameActionSchema>;
 export type AnswerPayload = z.infer<typeof AnswerSchema>;

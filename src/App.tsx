@@ -26,6 +26,7 @@ const Game = lazy(() => import('./pages/Game'));
 
 const Library = lazy(() => import('./pages/Library'));
 const Demo = lazy(() => import('./pages/Demo'));
+const Results = lazy(() => import('./pages/Results'));
 
 function PageLoader() {
   return (
@@ -75,6 +76,14 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <QuizBuilder />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/results/:gameId"
+                element={
+                  <ProtectedRoute>
+                    <Results />
                   </ProtectedRoute>
                 }
               />

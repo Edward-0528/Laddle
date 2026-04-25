@@ -27,6 +27,7 @@ import {
   JoinGameSchema,
   StartGameSchema,
   AnswerSchema,
+  GameActionSchema,
 } from './validators/schemas';
 import {
   checkRateLimit,
@@ -38,6 +39,7 @@ import {
   getGame,
   addPlayer,
   getPlayerList,
+  getConnectedPlayerList,
   isGameHost,
   advanceToNextQuestion,
   recordAnswer,
@@ -45,6 +47,9 @@ import {
   handleDisconnect,
   getActiveGameCount,
   cleanupIdleGames,
+  cleanupDisconnectedPlayers,
+  reconnectPlayer,
+  removeGame,
   QuestionResult,
 } from './services/gameManager';
 
@@ -184,7 +189,7 @@ io.on('connection', (socket) => {
       }
 
       // Create the game
-      const code = createGame(socket.id, result.data.questions);
+      const code = createGame(socket.id, result.data.questions, result.data.quizTitle);
       if (!code) {
         return callback({ error: 'Server is at capacity. Please try again later.' });
       }
@@ -215,6 +220,18 @@ io.on('connection', (socket) => {
       }
 
       const { code, name } = result.data;
+
+      // ---- Reconnect path: player was in an active game and lost connection ----
+      const reconnected = reconnectPlayer(code, socket.id, name);
+      if (reconnected.ok) {
+        socket.join(code);
+        socket.emit(EVENTS.GAME_ROLE, { role: 'player', code });
+        socket.emit(EVENTS.PLAYER_RECONNECTED, { message: 'You have been reconnected.' });
+        io.to(code).emit(EVENTS.LOBBY_UPDATE, getConnectedPlayerList(code));
+        return callback({ ok: true });
+      }
+
+      // ---- Normal join path ----
       const joinResult = addPlayer(code, socket.id, name);
 
       if (!joinResult.ok) {
@@ -309,6 +326,50 @@ io.on('connection', (socket) => {
   });
 
   // -----------------------------------------------------------------------
+  // host:skip - Host skips the current question immediately
+  // -----------------------------------------------------------------------
+  socket.on(EVENTS.HOST_SKIP, (payload: unknown) => {
+    const result = GameActionSchema.safeParse(payload);
+    if (!result.success) return;
+    const { code } = result.data;
+    if (!isGameHost(code, socket.id)) return;
+    const game = getGame(code);
+    if (!game || game.state !== 'question') return;
+    logger.info('Host skipped question', { code, questionIndex: game.currentQuestionIndex + 1 });
+    endCurrentQuestion(code, game.currentQuestionIndex);
+  });
+
+  // -----------------------------------------------------------------------
+  // host:end - Host ends the game early with current scores
+  // -----------------------------------------------------------------------
+  socket.on(EVENTS.HOST_END_GAME, (payload: unknown) => {
+    const result = GameActionSchema.safeParse(payload);
+    if (!result.success) return;
+    const { code } = result.data;
+    if (!isGameHost(code, socket.id)) return;
+    const game = getGame(code);
+    if (!game) return;
+    logger.info('Host ended game early', { code });
+    const leaderboard = Object.values(game.players)
+      .sort((a, b) => b.score - a.score)
+      .map((p, i) => ({
+        rank: i + 1,
+        name: p.name,
+        score: p.score,
+        pointsEarned: 0,
+        streak: p.streak,
+        rankDelta: 0,
+      }));
+    io.to(code).emit(EVENTS.GAME_RESULTS, {
+      leaderboard,
+      quizTitle: game.quizTitle,
+      code,
+      playedAt: Date.now(),
+    });
+    removeGame(code);
+  });
+
+  // -----------------------------------------------------------------------
   // disconnect - Handle client disconnection
   // -----------------------------------------------------------------------
   socket.on('disconnect', () => {
@@ -342,7 +403,13 @@ function startNextQuestion(code: string): void {
 
   if (result.finished) {
     if (result.leaderboard) {
-      io.to(code).emit('game:results', result.leaderboard);
+      const game = getGame(code);
+      io.to(code).emit(EVENTS.GAME_RESULTS, {
+        leaderboard: result.leaderboard,
+        quizTitle: game?.quizTitle,
+        code,
+        playedAt: Date.now(),
+      });
     }
     return;
   }
@@ -397,6 +464,7 @@ function endCurrentQuestion(code: string, questionIndex: number): void {
 
 setInterval(() => {
   cleanupIdleGames();
+  cleanupDisconnectedPlayers();
 }, 60_000);
 
 // ---------------------------------------------------------------------------

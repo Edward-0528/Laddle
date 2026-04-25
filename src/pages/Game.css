@@ -442,6 +442,29 @@
   transition: width 0.5s ease;
 }
 
+/* -------- Host controls (skip / end) -------- */
+
+.host-controls {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  margin-top: 1.25rem;
+}
+
+/* -------- Reconnect banner -------- */
+
+.reconnect-banner {
+  background: var(--color-result-correct, #2ecc71);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-align: center;
+  padding: 0.6rem 1rem;
+  border-radius: var(--radius-md);
+  margin-bottom: 0.75rem;
+  animation: fadeIn 0.3s ease;
+}
+
 /* -------- Choice letter badge -------- */
 
 .choice-letter {
