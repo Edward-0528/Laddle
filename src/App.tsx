@@ -6,7 +6,7 @@
 // ---------------------------------------------------------------------------
 
 import { Suspense, lazy } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
@@ -49,6 +49,9 @@ function PageLoader() {
 
 function App() {
   const { user, signOut } = useAuth();
+  const location = useLocation();
+
+  const isGameRoute = location.pathname.startsWith('/game/');
 
   const firstName = user?.displayName?.split(' ')[0] ?? user?.email?.split('@')[0] ?? '';
 
@@ -61,12 +64,14 @@ function App() {
   return (
     <ErrorBoundary>
       <div className="app">
-        <Navbar
-          isAuthenticated={!!user}
-          userName={firstName}
-          onSignOut={signOut}
-          branding={branding}
-        />
+        {!isGameRoute && (
+          <Navbar
+            isAuthenticated={!!user}
+            userName={firstName}
+            onSignOut={signOut}
+            branding={branding}
+          />
+        )}
         <main className="app-main">
           <Suspense fallback={<PageLoader />}>
             <Routes>
@@ -142,7 +147,7 @@ function App() {
             </Routes>
           </Suspense>
         </main>
-        <Footer />
+        {!isGameRoute && <Footer />}
       </div>
     </ErrorBoundary>
   );
