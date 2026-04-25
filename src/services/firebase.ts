@@ -13,6 +13,7 @@
 import { initializeApp, FirebaseApp } from 'firebase/app';
 import { getFirestore, Firestore } from 'firebase/firestore';
 import { getAuth, Auth } from 'firebase/auth';
+import { getStorage, FirebaseStorage } from 'firebase/storage';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -29,14 +30,16 @@ const firebaseConfig = {
 let app: FirebaseApp | undefined;
 let db: Firestore | undefined;
 let auth: Auth | undefined;
+let storage: FirebaseStorage | undefined;
 
 if (firebaseConfig.apiKey) {
   app = initializeApp(firebaseConfig);
   db = getFirestore(app);
   auth = getAuth(app);
+  storage = getStorage(app);
   console.log('[Ladle] Firebase initialized successfully');
 } else {
   console.log('[Ladle] Firebase not configured - running in local-only mode');
 }
 
-export { app, db, auth };
+export { app, db, auth, storage };

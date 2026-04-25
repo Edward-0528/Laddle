@@ -10,16 +10,23 @@ import { Link, useLocation } from 'react-router-dom';
 import Button from '../ui/Button';
 import './Navbar.css';
 
+interface BrandingSettings {
+  logoUrl?: string;
+  primaryColor?: string;
+}
+
 interface NavbarProps {
   isAuthenticated?: boolean;
   userName?: string;
   onSignOut?: () => void;
+  branding?: BrandingSettings;
 }
 
 const Navbar: React.FC<NavbarProps> = ({
   isAuthenticated = false,
   userName,
   onSignOut,
+  branding,
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
@@ -35,12 +42,23 @@ const Navbar: React.FC<NavbarProps> = ({
   };
 
   return (
-    <nav className="navbar" role="navigation" aria-label="Main navigation">
+    <nav
+      className="navbar"
+      role="navigation"
+      aria-label="Main navigation"
+      style={branding?.primaryColor ? { '--color-primary': branding.primaryColor } as React.CSSProperties : undefined}
+    >
       <div className="navbar-inner container">
         {/* Logo */}
         <Link to="/" className="navbar-logo" onClick={closeMobileMenu}>
-          <span className="navbar-logo-icon">🎉</span>
-          <span className="navbar-logo-text">PopPop!</span>
+          {branding?.logoUrl ? (
+            <img src={branding.logoUrl} alt="Logo" className="navbar-brand-logo" />
+          ) : (
+            <>
+              <span className="navbar-logo-icon">🎉</span>
+              <span className="navbar-logo-text">PopPop!</span>
+            </>
+          )}
         </Link>
 
         {/* Desktop Navigation Links */}
@@ -65,6 +83,14 @@ const Navbar: React.FC<NavbarProps> = ({
           >
             Join Quiz
           </Link>
+          {!isAuthenticated && (
+            <Link
+              to="/pricing"
+              className={`navbar-link ${isActive('/pricing') ? 'navbar-link-active' : ''}`}
+            >
+              Pricing
+            </Link>
+          )}
           {isAuthenticated && (
             <>
               <Link
@@ -78,6 +104,12 @@ const Navbar: React.FC<NavbarProps> = ({
                 className={`navbar-link ${isActive('/create') ? 'navbar-link-active' : ''}`}
               >
                 Create Quiz
+              </Link>
+              <Link
+                to="/org-settings"
+                className={`navbar-link ${isActive('/org-settings') ? 'navbar-link-active' : ''}`}
+              >
+                Brand Settings
               </Link>
             </>
           )}
@@ -145,6 +177,12 @@ const Navbar: React.FC<NavbarProps> = ({
               </Link>
               <Link to="/create" className="navbar-mobile-link" onClick={closeMobileMenu}>
                 Create Quiz
+              </Link>
+              <Link to="/assignments" className="navbar-mobile-link" onClick={closeMobileMenu}>
+                Assignments
+              </Link>
+              <Link to="/org-settings" className="navbar-mobile-link" onClick={closeMobileMenu}>
+                Brand Settings
               </Link>
               <button className="navbar-mobile-link" onClick={() => { closeMobileMenu(); onSignOut?.(); }}>
                 Sign Out

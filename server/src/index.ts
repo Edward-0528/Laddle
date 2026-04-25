@@ -13,6 +13,7 @@
 //   - Maximum game and player limits enforced
 // ---------------------------------------------------------------------------
 
+import Stripe from 'stripe';
 import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
@@ -179,6 +180,108 @@ app.post('/api/ai/generate', async (req, res) => {
     res.status(500).json({ error: 'AI generation failed. Please try again.' });
   }
 });
+
+// ---------------------------------------------------------------------------
+// POST /api/billing/create-checkout
+// Body: { uid: string; email: string }
+// Creates a Stripe Checkout session for the Pro plan.
+// ---------------------------------------------------------------------------
+app.post('/api/billing/create-checkout', async (req, res) => {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    res.status(503).json({ error: 'Billing is not configured on this server.' });
+    return;
+  }
+  const { uid, email } = req.body as { uid?: string; email?: string };
+  if (!uid || !email) {
+    res.status(400).json({ error: 'uid and email are required.' });
+    return;
+  }
+  try {
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2026-04-22.dahlia' });
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      customer_email: email,
+      line_items: [
+        {
+          price: process.env.STRIPE_PRO_PRICE_ID!,
+          quantity: 1,
+        },
+      ],
+      metadata: { uid },
+      success_url: `${process.env.CLIENT_ORIGIN || 'http://localhost:5173'}/dashboard?upgraded=1`,
+      cancel_url: `${process.env.CLIENT_ORIGIN || 'http://localhost:5173'}/pricing`,
+    });
+    res.json({ url: session.url });
+  } catch (err: any) {
+    logger.error('[Billing] Checkout creation failed', { message: err?.message });
+    res.status(500).json({ error: 'Could not create checkout session.' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/billing/webhook
+// Stripe webhook — upgrades / downgrades user plan in Firestore.
+// ---------------------------------------------------------------------------
+app.post(
+  '/api/billing/webhook',
+  express.raw({ type: 'application/json' }),
+  async (req, res) => {
+    if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET) {
+      res.status(503).json({ error: 'Billing webhook not configured.' });
+      return;
+    }
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2026-04-22.dahlia' });
+    const sig = req.headers['stripe-signature'] as string;
+    let event: ReturnType<typeof stripe.webhooks.constructEvent>;
+    try {
+      event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+    } catch (err: any) {
+      logger.warn('[Billing] Webhook signature verification failed', { message: err?.message });
+      res.status(400).send(`Webhook Error: ${err?.message}`);
+      return;
+    }
+
+    // We handle subscription active / deleted to flip the plan field in Firestore.
+    // Firestore Admin SDK is optional — fall back gracefully if not configured.
+    try {
+      const { initializeApp, getApps, cert } = await import('firebase-admin/app');
+      const { getFirestore } = await import('firebase-admin/firestore');
+
+      if (!getApps().length && process.env.FIREBASE_ADMIN_CREDENTIALS) {
+        const creds = JSON.parse(process.env.FIREBASE_ADMIN_CREDENTIALS);
+        initializeApp({ credential: cert(creds) });
+      }
+
+      if (getApps().length) {
+        const db = getFirestore();
+        if (
+          event.type === 'customer.subscription.created' ||
+          event.type === 'customer.subscription.updated'
+        ) {
+          const sub = event.data.object as { metadata?: { uid?: string }; status?: string };
+          const uid = sub.metadata?.uid;
+          if (uid) {
+            const plan = sub.status === 'active' ? 'pro' : 'free';
+            await db.collection('users').doc(uid).set({ plan }, { merge: true });
+            logger.info('[Billing] Plan updated', { uid, plan });
+          }
+        } else if (event.type === 'customer.subscription.deleted') {
+          const sub = event.data.object as { metadata?: { uid?: string } };
+          const uid = sub.metadata?.uid;
+          if (uid) {
+            await db.collection('users').doc(uid).set({ plan: 'free' }, { merge: true });
+            logger.info('[Billing] Subscription cancelled — plan set to free', { uid });
+          }
+        }
+      }
+    } catch (err: any) {
+      logger.error('[Billing] Firestore update failed', { message: err?.message });
+    }
+
+    res.json({ received: true });
+  }
+);
 
 // ---------------------------------------------------------------------------
 // Socket.IO Server Setup

@@ -30,6 +30,12 @@
   flex-shrink: 0;
 }
 
+.navbar-brand-logo {
+  height: 36px;
+  max-width: 120px;
+  object-fit: contain;
+}
+
 .navbar-logo-icon {
   display: flex;
   align-items: center;

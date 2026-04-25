@@ -1,0 +1,225 @@
+/* ---------------------------------------------------------------------------
+   AssignmentReport — Host results view
+   --------------------------------------------------------------------------- */
+
+.ar-page {
+  padding: 2rem 0 4rem;
+  min-height: 60vh;
+}
+
+.ar-container {
+  max-width: 860px;
+}
+
+.ar-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  min-height: 50vh;
+  text-align: center;
+}
+
+/* ---- Header ---- */
+
+.ar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 2rem;
+}
+
+.ar-title {
+  font-size: 1.75rem;
+  font-weight: 800;
+  margin: 0 0 0.25rem;
+}
+
+.ar-label {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary, #555);
+  margin: 0 0 0.5rem;
+}
+
+.ar-meta {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary, #666);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0;
+}
+
+.ar-status-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.ar-status-badge.open { background: #d1fae5; color: #065f46; }
+.ar-status-badge.closed { background: #fee2e2; color: #991b1b; }
+
+/* ---- Stat cards ---- */
+
+.ar-stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.ar-stat-card {
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 0.875rem;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.ar-stat-value {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--color-primary, #6c47ff);
+}
+
+.ar-stat-label {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary, #777);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-align: center;
+}
+
+/* ---- Sections ---- */
+
+.ar-section {
+  margin-bottom: 2.5rem;
+}
+
+.ar-section-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 0 0 1rem;
+}
+
+/* ---- Question accuracy list ---- */
+
+.ar-q-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.ar-q-row {
+  display: grid;
+  grid-template-columns: 2.5rem 1fr 240px;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+}
+
+.ar-q-num {
+  font-weight: 700;
+  color: var(--color-primary, #6c47ff);
+}
+
+.ar-q-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ar-q-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ar-q-bar-track {
+  flex: 1;
+  height: 8px;
+  background: var(--color-border, #e5e7eb);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ar-q-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+.ar-q-pct {
+  font-size: 0.8rem;
+  font-weight: 700;
+  min-width: 2.5rem;
+  text-align: right;
+}
+
+.ar-q-pct-na {
+  font-size: 0.8rem;
+  color: var(--color-text-muted, #aaa);
+}
+
+/* ---- Table ---- */
+
+.ar-empty {
+  color: var(--color-text-muted, #999);
+  font-size: 0.9rem;
+}
+
+.ar-table-wrap {
+  overflow-x: auto;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-border, #e5e7eb);
+}
+
+.ar-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.ar-table th {
+  background: var(--color-bg-light, #f8f7fc);
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary, #666);
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+}
+
+.ar-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+}
+
+.ar-table tr:last-child td { border-bottom: none; }
+
+.ar-top-1 td { background: #fffbea; }
+.ar-top-2 td { background: #f9fafb; }
+.ar-top-3 td { background: #fff5f0; }
+
+.ar-rank { font-weight: 700; color: var(--color-primary, #6c47ff); }
+.ar-student-name { font-weight: 600; }
+.ar-score { font-weight: 700; }
+.ar-date { color: var(--color-text-muted, #999); font-size: 0.8rem; }
+
+@media (max-width: 600px) {
+  .ar-stats-row { grid-template-columns: repeat(2, 1fr); }
+  .ar-q-row { grid-template-columns: 2rem 1fr; }
+  .ar-q-bar-wrap { display: none; }
+}
