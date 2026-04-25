@@ -89,6 +89,7 @@ export async function createQuiz(
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
     isPublic,
+    isTemplate: false,
   });
   console.log('[Ladle] Quiz created with ID:', docRef.id);
   return docRef.id;
