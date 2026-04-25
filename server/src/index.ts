@@ -28,7 +28,9 @@ import {
   StartGameSchema,
   AnswerSchema,
   GameActionSchema,
+  AIGenerateSchema,
 } from './validators/schemas';
+import { generateQuestions } from './services/aiGenerator';
 import {
   checkRateLimit,
   clearRateLimits,
@@ -146,6 +148,36 @@ app.get('/health', (_req, res) => {
  */
 app.get('/ping', (_req, res) => {
   res.json({ pong: Date.now() });
+});
+
+/**
+ * AI question generation endpoint.
+ * POST /api/ai/generate
+ * Body: { topic: string; gradeLevel: string; count: number }
+ * Returns: { questions: AIQuestion[] }
+ *
+ * Requires GEMINI_API_KEY to be set in the server environment.
+ * Returns 503 if the key is absent, 400 on bad input, 500 on Gemini failure.
+ */
+app.post('/api/ai/generate', async (req, res) => {
+  if (!process.env.GEMINI_API_KEY) {
+    res.status(503).json({ error: 'AI generation is not configured on this server.' });
+    return;
+  }
+
+  const parseResult = AIGenerateSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    res.status(400).json({ error: 'Invalid request', details: parseResult.error.flatten() });
+    return;
+  }
+
+  try {
+    const questions = await generateQuestions(parseResult.data);
+    res.json({ questions });
+  } catch (err: any) {
+    logger.error('[AI] Generation failed', { message: err?.message });
+    res.status(500).json({ error: 'AI generation failed. Please try again.' });
+  }
 });
 
 // ---------------------------------------------------------------------------

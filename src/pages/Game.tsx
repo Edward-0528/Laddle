@@ -463,11 +463,11 @@ const Game = () => {
           <div className={`game-question-screen ${questionTransition ? 'game-transition-out' : 'game-transition-in'}`}>
 
             <div className="question-top-bar">
-              <span className="question-progress">
+              <span className="question-progress" aria-label={`Question ${currentQuestion.index + 1} of ${currentQuestion.total}`}>
                 Q{currentQuestion.index + 1} / {currentQuestion.total}
               </span>
-              <div className="timer-container">
-                <svg className="timer-ring" viewBox="0 0 44 44">
+              <div className="timer-container" role="timer" aria-label={`${timeLeft} seconds remaining`} aria-live="off">
+                <svg className="timer-ring" viewBox="0 0 44 44" aria-hidden="true">
                   <circle className="timer-ring-bg" cx="22" cy="22" r="18" />
                   <circle
                     className="timer-ring-fill"
@@ -475,7 +475,7 @@ const Game = () => {
                     style={{ stroke: timerColor, strokeDashoffset: `${(1 - timerPercent / 100) * 113}px` }}
                   />
                 </svg>
-                <span className={`timer-number ${timeLeft <= 5 ? 'timer-urgent' : ''}`} style={{ color: timerColor }}>
+                <span className={`timer-number ${timeLeft <= 5 ? 'timer-urgent' : ''}`} style={{ color: timerColor }} aria-hidden="true">
                   {timeLeft}
                 </span>
               </div>
@@ -486,7 +486,7 @@ const Game = () => {
             </div>
 
             {/* Host sees choices as display tiles, not buttons */}
-            <div className="choices-grid host-choices">
+            <div className="choices-grid host-choices" role="list" aria-label="Answer choices">
               {currentQuestion.q.choices.map((choice, index) => {
                 const color = CHOICE_COLORS[index % CHOICE_COLORS.length];
                 return (
@@ -494,8 +494,9 @@ const Game = () => {
                     key={index}
                     className="game-choice game-choice-host"
                     style={{ borderColor: color.base }}
+                    role="listitem"
                   >
-                    <span className="choice-letter" style={{ background: color.base }}>{color.label}</span>
+                    <span className="choice-letter" style={{ background: color.base }} aria-hidden="true">{color.label}</span>
                     <span className="choice-text">{choice}</span>
                   </div>
                 );
@@ -503,12 +504,12 @@ const Game = () => {
             </div>
 
             {/* Live answer progress bar */}
-            <div className="host-answer-tracker">
+            <div className="host-answer-tracker" aria-live="polite" aria-atomic="true">
               <div className="hat-bar-row">
                 <span className="hat-label">{answerCount} / {playerCount} answered</span>
                 <span className="hat-pct">{pct}%</span>
               </div>
-              <div className="hat-bar-track">
+              <div className="hat-bar-track" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Players answered">
                 <div className="hat-bar-fill" style={{ width: `${pct}%` }} />
               </div>
             </div>
@@ -552,11 +553,11 @@ const Game = () => {
           <div className={`game-question-screen ${questionTransition ? 'game-transition-out' : 'game-transition-in'}`}>
 
             <div className="question-top-bar">
-              <span className="question-progress">
+              <span className="question-progress" aria-label={`Question ${currentQuestion.index + 1} of ${currentQuestion.total}`}>
                 {currentQuestion.index + 1} / {currentQuestion.total}
               </span>
-              <div className="timer-container">
-                <svg className="timer-ring" viewBox="0 0 44 44">
+              <div className="timer-container" role="timer" aria-label={`${timeLeft} seconds remaining`} aria-live="off">
+                <svg className="timer-ring" viewBox="0 0 44 44" aria-hidden="true">
                   <circle className="timer-ring-bg" cx="22" cy="22" r="18" />
                   <circle
                     className="timer-ring-fill"
@@ -564,7 +565,7 @@ const Game = () => {
                     style={{ stroke: timerColor, strokeDashoffset: `${(1 - timerPercent / 100) * 113}px` }}
                   />
                 </svg>
-                <span className={`timer-number ${timeLeft <= 5 ? 'timer-urgent' : ''}`} style={{ color: timerColor }}>
+                <span className={`timer-number ${timeLeft <= 5 ? 'timer-urgent' : ''}`} style={{ color: timerColor }} aria-hidden="true">
                   {timeLeft}
                 </span>
               </div>
@@ -574,7 +575,7 @@ const Game = () => {
               <h2 className="question-text">{currentQuestion.q.text}</h2>
             </div>
 
-            <div className="choices-grid">
+            <div className="choices-grid" role="group" aria-label="Answer choices">
               {currentQuestion.q.choices.map((choice, index) => {
                 const color = CHOICE_COLORS[index % CHOICE_COLORS.length];
                 const state = getChoiceState(index);
@@ -588,8 +589,10 @@ const Game = () => {
                     }}
                     onClick={() => selectChoice(index)}
                     disabled={hasAnswered || timeLeft <= 0}
+                    aria-pressed={state === 'selected'}
+                    aria-label={`${color.label}: ${choice}`}
                   >
-                    <span className="choice-letter" style={{ background: color.base }}>{color.label}</span>
+                    <span className="choice-letter" style={{ background: color.base }} aria-hidden="true">{color.label}</span>
                     <span className="choice-text">{choice}</span>
                   </button>
                 );
@@ -597,12 +600,12 @@ const Game = () => {
             </div>
 
             {hasAnswered && (
-              <div className="answer-submitted-banner">
+              <div className="answer-submitted-banner" role="status" aria-live="polite">
                 Answer locked in — waiting for results...
               </div>
             )}
             {timeLeft <= 0 && !hasAnswered && (
-              <div className="time-up-banner">Time is up!</div>
+              <div className="time-up-banner" role="alert">Time is up!</div>
             )}
           </div>
         </div>

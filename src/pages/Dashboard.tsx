@@ -4,9 +4,9 @@
 // Provides actions to create, edit, delete, and launch quizzes.
 // ---------------------------------------------------------------------------
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useQuery, useQueryClient } from '@tanstack/react-query';import { useAuth } from '../context/AuthContext';
 import { getUserQuizzes, deleteQuiz } from '../services/quizzes';
 import { getRecentGames } from '../services/gameResults';
 import { socket } from '../services/socket';
@@ -14,41 +14,32 @@ import { QRCodeSVG } from 'qrcode.react';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import type { Quiz } from '../types/quiz';
-import type { GameResult } from '../types/gameResult';
 import './Dashboard.css';
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [error, setError] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [launchingId, setLaunchingId] = useState<string | null>(null);
-  const [recentGames, setRecentGames] = useState<GameResult[]>([]);
   /** Non-null while the Quick Launch modal is open; holds the game code + join URL */
   const [quickLaunch, setQuickLaunch] = useState<{ code: string; joinUrl: string } | null>(null);
 
-  useEffect(() => {
-    if (!user) return;
-    loadQuizzes();
-    getRecentGames(user.uid, 5).then(setRecentGames).catch(() => {});
-  }, [user]);
+  const {
+    data: quizzes = [],
+    isLoading,
+  } = useQuery({
+    queryKey: ['quizzes', user?.uid],
+    queryFn: () => getUserQuizzes(user!.uid),
+    enabled: !!user,
+  });
 
-  async function loadQuizzes() {
-    if (!user) return;
-    setIsLoading(true);
-    setError('');
-    try {
-      const data = await getUserQuizzes(user.uid);
-      setQuizzes(data);
-    } catch (err) {
-      console.error('[Ladle] Failed to load quizzes:', err);
-      setError('Failed to load your quizzes. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  }
+  const { data: recentGames = [] } = useQuery({
+    queryKey: ['recentGames', user?.uid],
+    queryFn: () => getRecentGames(user!.uid, 5),
+    enabled: !!user,
+  });
 
   async function handleDelete(quizId: string) {
     const confirmed = window.confirm(
@@ -59,7 +50,9 @@ const Dashboard: React.FC = () => {
     setDeletingId(quizId);
     try {
       await deleteQuiz(quizId);
-      setQuizzes((prev) => prev.filter((q) => q.id !== quizId));
+      queryClient.setQueryData<Quiz[]>(['quizzes', user?.uid], (prev = []) =>
+        prev.filter((q) => q.id !== quizId)
+      );
     } catch (err) {
       console.error('[Ladle] Failed to delete quiz:', err);
       setError('Failed to delete quiz. Please try again.');

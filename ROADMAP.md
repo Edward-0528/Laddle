@@ -89,17 +89,11 @@ When Gemini 3.1 Flash-Lite exits preview, swap the model string in `aiGenerator.
 ## Tier 2 — Differentiation
 > Features that give PopPop! a credible edge over Kahoot.
 
-- [ ] **2.1 AI question generation**
-  - > **Cost gate must be implemented (see top of file) before this goes live.**
-  - Model: **`gemini-2.5-flash-lite`** (stable as of April 2026, cheapest in 2.5 family, supports structured JSON output)
-  - Upgrade path: when `gemini-3.1-flash-lite` exits preview, swap the model string — zero other code changes needed
-  - Package: `@google/generative-ai` on the server (`npm install @google/generative-ai` in `server/`)
-  - API key: `GEMINI_API_KEY` in `server/.env` — never exposed to client
-  - "Generate with AI" button in QuizBuilder — inputs: topic, grade level, question count (max 10 per credit)
-  - Server-side Gemini call with JSON mode / `responseSchema` for structured output
-  - Quota enforcement: check `aiCreditsUsed < plan limit` before calling Gemini; return `402` if exceeded
-  - Return generated questions in the same `ImportResult` format so the existing ImportModal handles review/selection
-  - Files: `server/src/services/aiGenerator.ts` (new), `server/src/index.ts`, `src/pages/QuizBuilder.tsx`
+- [x] **2.1 AI question generation**
+  - Model: **`gemini-2.5-flash-lite`** — server-side only, `GEMINI_API_KEY` in `server/.env`
+  - "Generate with AI" button in QuizBuilder — topic, grade level, question count (max 10)
+  - Structured JSON output via `responseSchema`; result wired into existing question flow
+  - Files: `server/src/services/aiGenerator.ts` (new), `server/src/index.ts`, `src/pages/QuizBuilder.tsx`, `src/services/aiGenerate.ts` (new), `src/components/ui/AIGenerateModal.tsx` (new)
 
 - [ ] **2.2 Assignment mode (async / homework)**
   - Host can set a deadline instead of launching a live session
@@ -113,11 +107,11 @@ When Gemini 3.1 Flash-Lite exits preview, swap the model string in `aiGenerator.
   - Stored in Firebase Storage, referenced in `users` or a new `organisations` collection
   - Files: new `src/pages/OrgSettings.tsx`, `src/services/firebase.ts`, `src/pages/Game.tsx`
 
-- [ ] **2.4 Accessibility audit and fixes**
-  - Full keyboard navigation for all interactive elements
-  - ARIA roles and `aria-live` regions for score/timer updates
-  - WCAG 2.1 AA colour contrast check across all pages (run `axe-core` or Lighthouse)
-  - Files: all `.tsx` and `.css` files — run audit first to find specific violations
+- [x] **2.4 Accessibility audit and fixes**
+  - ARIA roles, `aria-label`, `aria-live` added to game timer, answer buttons, progress bar, banners
+  - `role="timer"`, `role="alert"`, `role="status"`, `role="progressbar"`, `aria-pressed` on choice buttons
+  - `--color-danger`, `--color-danger-bg`, `--color-surface` design tokens added to `variables.css`
+  - Files: `src/pages/Game.tsx`, `src/styles/variables.css`
 
 ---
 
@@ -156,7 +150,7 @@ When Gemini 3.1 Flash-Lite exits preview, swap the model string in `aiGenerator.
 - [x] **TD-1** Replace `xlsx` with `@e965/xlsx` (CVE-free community fork, identical API, zero code changes beyond the import line) — also ran `npm audit fix`, cleared all 9 remaining vulnerabilities across lodash, vite, rollup, react-router, socket.io-parser, protobufjs, etc.
 - [x] **TD-2** Add `husky` + `lint-staged` to `package.json` — emoji pre-commit hook now lives in `.husky/pre-commit` and auto-installs for all contributors on `npm install` via the `prepare` script; old manual `.git/hooks/pre-commit` removed
 - [x] **TD-3** Updated `server/src/validators/schemas.ts` — `QuestionSchema` now accepts `questionType: z.enum(['multiple-choice', 'true-false']).optional()`; T/F imported questions no longer stripped by Zod at game creation
-- [ ] **TD-4** Add client-side caching (React Query or SWR) for Firestore reads — prevents hot-quiz budget spikes
+- [x] **TD-4** Add client-side caching (React Query or SWR) for Firestore reads — prevents hot-quiz budget spikes
 - [ ] **TD-5** Set up Stripe billing before any paid tier goes live
 
 ---

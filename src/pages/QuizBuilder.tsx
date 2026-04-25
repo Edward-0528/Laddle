@@ -13,6 +13,8 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Card from '../components/ui/Card';
 import ImportModal from '../components/ui/ImportModal';
+import AIGenerateModal from '../components/ui/AIGenerateModal';
+import { generateQuestionsAI } from '../services/aiGenerate';
 import type { QuizQuestion, QuizSettings, QuestionType } from '../types/quiz';
 import './QuizBuilder.css';
 
@@ -76,6 +78,7 @@ const QuizBuilder: React.FC = () => {
   const [isLoadingQuiz, setIsLoadingQuiz] = useState(!!editId);
   const [error, setError] = useState('');
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showAIModal, setShowAIModal] = useState(false);
 
   // Load existing quiz if editing
   useEffect(() => {
@@ -194,6 +197,17 @@ const QuizBuilder: React.FC = () => {
       return merged;
     });
     setActiveQuestionIndex(questions.length);
+  }
+
+  async function handleAIGenerate(topic: string, gradeLevel: string, count: number) {
+    const generated = await generateQuestionsAI({ topic, gradeLevel, count });
+    setQuestions((prev) => {
+      // Remove the single empty placeholder if the builder is still empty
+      const hasContent = prev.some((q) => q.text.trim().length > 0);
+      const base = hasContent ? prev : [];
+      return [...base, ...generated];
+    });
+    setActiveQuestionIndex(0);
   }
 
   function removeQuestion(index: number) {
@@ -395,6 +409,9 @@ const QuizBuilder: React.FC = () => {
               Questions ({questions.length})
             </h2>
             <div className="builder-questions-actions">
+              <Button variant="ghost" size="sm" onClick={() => setShowAIModal(true)}>
+                Generate with AI
+              </Button>
               <Button variant="ghost" size="sm" onClick={() => setShowImportModal(true)}>
                 Import
               </Button>
@@ -539,6 +556,13 @@ const QuizBuilder: React.FC = () => {
         <ImportModal
           onImport={handleImportQuestions}
           onClose={() => setShowImportModal(false)}
+        />
+      )}
+
+      {showAIModal && (
+        <AIGenerateModal
+          onGenerate={handleAIGenerate}
+          onClose={() => setShowAIModal(false)}
         />
       )}
     </div>

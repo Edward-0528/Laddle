@@ -89,3 +89,15 @@ export type JoinGamePayload = z.infer<typeof JoinGameSchema>;
 export type StartGamePayload = z.infer<typeof StartGameSchema>;
 export type GameActionPayload = z.infer<typeof GameActionSchema>;
 export type AnswerPayload = z.infer<typeof AnswerSchema>;
+
+// ---------------------------------------------------------------------------
+// AI Generation Schema
+// ---------------------------------------------------------------------------
+
+export const AIGenerateSchema = z.object({
+  topic: z.string().min(1).max(200).transform((v) => v.replace(/<[^>]*>/g, '').trim()),
+  gradeLevel: z.string().min(1).max(50).transform((v) => v.replace(/<[^>]*>/g, '').trim()),
+  count: z.number().int().min(1).max(10),
+});
+
+export type AIGeneratePayload = z.infer<typeof AIGenerateSchema>;

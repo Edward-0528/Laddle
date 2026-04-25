@@ -30,6 +30,12 @@
   --color-info: #55A3FF;
   --color-result-correct: #2ecc71;   /* game answer correct */
   --color-result-wrong: #e74c3c;     /* game answer wrong   */
+  /* Aliases for components that prefer the "danger" naming convention */
+  --color-danger: var(--color-error);
+  --color-danger-bg: var(--color-error-light);
+  --color-danger-border: #feb2b2;
+  /* Surface alias for modals / cards */
+  --color-surface: var(--color-bg-white);
 
   /* ------- Background Colors ------- */
   --color-bg-white: #FFFFFF;
