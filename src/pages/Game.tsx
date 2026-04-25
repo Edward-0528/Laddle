@@ -597,7 +597,7 @@ const Game = () => {
 
   if (gameState === 'question' && currentQuestion) {
     return (
-      <div className="game-page">
+      <div className="game-page game-page-dark">
         <div className="container game-container">
           <div className={`game-question-screen ${questionTransition ? 'game-transition-out' : 'game-transition-in'}`}>
 
