@@ -95,17 +95,17 @@ When Gemini 3.1 Flash-Lite exits preview, swap the model string in `aiGenerator.
   - Structured JSON output via `responseSchema`; result wired into existing question flow
   - Files: `server/src/services/aiGenerator.ts` (new), `server/src/index.ts`, `src/pages/QuizBuilder.tsx`, `src/services/aiGenerate.ts` (new), `src/components/ui/AIGenerateModal.tsx` (new)
 
-- [ ] **2.2 Assignment mode (async / homework)**
+- [x] **2.2 Assignment mode (async / homework)**
   - Host can set a deadline instead of launching a live session
-  - Students visit `/join` with the code at any time before the deadline
-  - Answers stored per-student in Firestore; host sees aggregated results after deadline
-  - Files: new `src/pages/Assignment.tsx`, `src/services/quizzes.ts`, Firestore schema update
+  - Students visit `/assignment/:code` at any time before the deadline
+  - Answers stored per-student in Firestore; host sees aggregated results at `/assignment-report/:id`
+  - Files: `src/types/assignment.ts`, `src/services/assignments.ts`, `src/pages/AssignmentTake.tsx`, `src/pages/AssignmentReport.tsx`, `src/pages/AssignmentsPage.tsx`, `src/pages/Dashboard.tsx`
 
-- [ ] **2.3 Custom branding per organisation**
+- [x] **2.3 Custom branding per organisation**
   - Paid-tier: upload logo, set primary colour
-  - Logo shown in lobby, game screen header, and result screen
-  - Stored in Firebase Storage, referenced in `users` or a new `organisations` collection
-  - Files: new `src/pages/OrgSettings.tsx`, `src/services/firebase.ts`, `src/pages/Game.tsx`
+  - Logo shown in Navbar; primary colour applied globally via CSS variable
+  - Stored in Firebase Storage, referenced in `users/{uid}/branding` in Firestore
+  - Files: `src/pages/OrgSettings.tsx`, `src/services/branding.ts`, `src/services/firebase.ts`, `src/components/layout/Navbar.tsx`
 
 - [x] **2.4 Accessibility audit and fixes**
   - ARIA roles, `aria-label`, `aria-live` added to game timer, answer buttons, progress bar, banners
@@ -151,7 +151,7 @@ When Gemini 3.1 Flash-Lite exits preview, swap the model string in `aiGenerator.
 - [x] **TD-2** Add `husky` + `lint-staged` to `package.json` — emoji pre-commit hook now lives in `.husky/pre-commit` and auto-installs for all contributors on `npm install` via the `prepare` script; old manual `.git/hooks/pre-commit` removed
 - [x] **TD-3** Updated `server/src/validators/schemas.ts` — `QuestionSchema` now accepts `questionType: z.enum(['multiple-choice', 'true-false']).optional()`; T/F imported questions no longer stripped by Zod at game creation
 - [x] **TD-4** Add client-side caching (React Query or SWR) for Firestore reads — prevents hot-quiz budget spikes
-- [ ] **TD-5** Set up Stripe billing before any paid tier goes live
+- [x] **TD-5** Set up Stripe billing — `POST /api/billing/create-checkout` + webhook on server; `src/pages/Pricing.tsx` + `src/services/billing.ts` on client; `stripe` on server, `@stripe/stripe-js` on client
 
 ---
 
