@@ -64,8 +64,8 @@ const Navbar: React.FC<NavbarProps> = ({
         {/* Desktop Navigation Links */}
         <div className="navbar-links">
           <Link
-            to="/"
-            className={`navbar-link ${isActive('/') ? 'navbar-link-active' : ''}`}
+            to={isAuthenticated ? '/dashboard' : '/'}
+            className={`navbar-link ${isActive(isAuthenticated ? '/dashboard' : '/') ? 'navbar-link-active' : ''}`}
           >
             Home
           </Link>
@@ -99,12 +99,6 @@ const Navbar: React.FC<NavbarProps> = ({
           )}
           {isAuthenticated && (
             <>
-              <Link
-                to="/dashboard"
-                className={`navbar-link ${isActive('/dashboard') ? 'navbar-link-active' : ''}`}
-              >
-                My Quizzes
-              </Link>
               <Link
                 to="/create"
                 className={`navbar-link ${isActive('/create') ? 'navbar-link-active' : ''}`}
@@ -168,14 +162,14 @@ const Navbar: React.FC<NavbarProps> = ({
       {/* Mobile Menu Overlay */}
       {isMobileMenuOpen && (
         <div className="navbar-mobile-menu">
-          <Link to="/" className="navbar-mobile-link" onClick={closeMobileMenu}>
+          <Link to={isAuthenticated ? '/dashboard' : '/'} className="navbar-mobile-link" onClick={closeMobileMenu}>
             Home
-          </Link>
-          <Link to="/demo" className="navbar-mobile-link" onClick={closeMobileMenu}>
-            Try Demo
           </Link>
           <Link to="/join" className="navbar-mobile-link" onClick={closeMobileMenu}>
             Join Quiz
+          </Link>
+          <Link to="/marketplace" className="navbar-mobile-link" onClick={closeMobileMenu}>
+            Marketplace
           </Link>
           {!isAuthenticated && (
             <Link to="/demo" className="navbar-mobile-link" onClick={closeMobileMenu}>
@@ -184,14 +178,14 @@ const Navbar: React.FC<NavbarProps> = ({
           )}
           {isAuthenticated ? (
             <>
-              <Link to="/dashboard" className="navbar-mobile-link" onClick={closeMobileMenu}>
-                My Quizzes
-              </Link>
               <Link to="/create" className="navbar-mobile-link" onClick={closeMobileMenu}>
                 Create Quiz
               </Link>
               <Link to="/assignments" className="navbar-mobile-link" onClick={closeMobileMenu}>
                 Assignments
+              </Link>
+              <Link to="/my-progress" className="navbar-mobile-link" onClick={closeMobileMenu}>
+                My Progress
               </Link>
               <Link to="/org-settings" className="navbar-mobile-link" onClick={closeMobileMenu}>
                 Brand Settings
