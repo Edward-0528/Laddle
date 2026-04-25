@@ -14,6 +14,7 @@ export interface QuizQuestion {
   questionType?: QuestionType;
   points?: number;
   imageUrl?: string;
+  standards?: string[];   // e.g. ["CCSS.MATH.3.OA.A.1", "NGSS.3-PS2-1"]
 }
 
 export interface QuizSettings {
@@ -58,6 +59,9 @@ export interface Quiz {
   gradeLevel?: GradeLevel;
   gradeBand?: GradeBand;
   caStandard?: string;     // e.g. "CCSS.MATH.3.OA" — California curriculum alignment
+  standards?: string[];    // per-quiz standard codes (aggregated from questions or manually set)
+  rating?: number;         // upvote count for marketplace
+  forkCount?: number;      // number of times forked
   questions: QuizQuestion[];
   settings: QuizSettings;
   stats: QuizStats;

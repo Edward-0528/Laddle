@@ -35,6 +35,8 @@ const AssignmentReport = lazy(() => import('./pages/AssignmentReport'));
 const AssignmentsPage = lazy(() => import('./pages/AssignmentsPage'));
 const OrgSettings = lazy(() => import('./pages/OrgSettings'));
 const Pricing = lazy(() => import('./pages/Pricing'));
+const Marketplace = lazy(() => import('./pages/Marketplace'));
+const StudentDashboard = lazy(() => import('./pages/StudentDashboard'));
 
 function PageLoader() {
   return (
@@ -76,6 +78,7 @@ function App() {
               <Route path="/game/:code" element={<Game />} />
               <Route path="/library" element={<Library />} />
               <Route path="/demo" element={<Demo />} />
+              <Route path="/marketplace" element={<Marketplace />} />
 
               {/* Protected routes */}
               <Route
@@ -104,6 +107,14 @@ function App() {
               />
               <Route path="/pricing" element={<Pricing />} />
               <Route path="/assignment/:code" element={<AssignmentTake />} />
+              <Route
+                path="/my-progress"
+                element={
+                  <ProtectedRoute>
+                    <StudentDashboard />
+                  </ProtectedRoute>
+                }
+              />
               <Route
                 path="/assignment-report/:id"
                 element={

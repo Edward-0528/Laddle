@@ -21,6 +21,7 @@ export interface Player {
   previousRank: number;
   connected: boolean;
   disconnectedAt?: number;
+  teamName?: string;  // set when teams are enabled
 }
 
 export interface Question {
@@ -48,6 +49,8 @@ export interface Game {
   answers: Record<string, PlayerAnswer>;
   createdAt: number;
   quizTitle?: string;
+  teamsEnabled: boolean;
+  teamNames: string[];   // ordered list of team names
 }
 
 export interface QuestionResult {
@@ -145,6 +148,8 @@ export function createGame(hostSocketId: string, questions: Question[], quizTitl
     answers: {},
     createdAt: Date.now(),
     quizTitle,
+    teamsEnabled: false,
+    teamNames: [],
   };
 
   logger.info('Game created', { code, hostSocketId, questionCount: questions.length });
@@ -449,6 +454,58 @@ export function handleDisconnect(socketId: string): {
  */
 export function removeGame(code: string): void {
   delete games[code];
+}
+
+// ---------------------------------------------------------------------------
+// Team Mode
+// ---------------------------------------------------------------------------
+
+/**
+ * Enables teams for a game and sets the team names.
+ * Assigns each player in the lobby to a team round-robin.
+ */
+export function setTeams(code: string, teamNames: string[]): boolean {
+  const game = games[code];
+  if (!game || game.state !== 'lobby') return false;
+  game.teamsEnabled = true;
+  game.teamNames = teamNames;
+  // Assign existing lobby players round-robin
+  const playerList = Object.values(game.players);
+  playerList.forEach((p, i) => {
+    p.teamName = teamNames[i % teamNames.length];
+  });
+  return true;
+}
+
+/**
+ * Assigns a joining player to the team with the fewest members (balance).
+ */
+export function assignPlayerTeam(code: string, socketId: string): string | undefined {
+  const game = games[code];
+  if (!game || !game.teamsEnabled || game.teamNames.length === 0) return undefined;
+  const counts = Object.fromEntries(game.teamNames.map((n) => [n, 0]));
+  for (const p of Object.values(game.players)) {
+    if (p.teamName && counts[p.teamName] !== undefined) counts[p.teamName]++;
+  }
+  const smallest = game.teamNames.reduce((a, b) => (counts[a] <= counts[b] ? a : b));
+  if (game.players[socketId]) game.players[socketId].teamName = smallest;
+  return smallest;
+}
+
+/**
+ * Returns a ranked team leaderboard (sum of scores per team).
+ */
+export function getTeamLeaderboard(code: string): Array<{ teamName: string; score: number; rank: number }> {
+  const game = games[code];
+  if (!game || !game.teamsEnabled) return [];
+  const totals: Record<string, number> = {};
+  for (const p of Object.values(game.players)) {
+    const t = p.teamName ?? 'No Team';
+    totals[t] = (totals[t] ?? 0) + p.score;
+  }
+  return Object.entries(totals)
+    .sort(([, a], [, b]) => b - a)
+    .map(([teamName, score], i) => ({ teamName, score, rank: i + 1 }));
 }
 
 /**

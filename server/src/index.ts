@@ -53,6 +53,9 @@ import {
   cleanupDisconnectedPlayers,
   reconnectPlayer,
   removeGame,
+  setTeams,
+  assignPlayerTeam,
+  getTeamLeaderboard,
   QuestionResult,
 } from './services/gameManager';
 
@@ -375,15 +378,43 @@ io.on('connection', (socket) => {
 
       socket.join(code);
 
-      // Notify the player of their role
-      socket.emit(EVENTS.GAME_ROLE, { role: 'player', code });
+      // If teams are enabled, assign this player a team
+      const teamName = assignPlayerTeam(code, socket.id);
+
+      // Notify the player of their role (include teamName if assigned)
+      socket.emit(EVENTS.GAME_ROLE, { role: 'player', code, teamName });
 
       // Broadcast updated player list to all participants
       io.to(code).emit(EVENTS.LOBBY_UPDATE, getPlayerList(code));
+      // Also broadcast updated team info so host can see team assignments live
+      if (teamName) {
+        const game = getGame(code);
+        if (game) io.to(code).emit('lobby:teams', { teamsEnabled: true, teamNames: game.teamNames });
+      }
 
       callback({ ok: true });
     }
   );
+
+  // -----------------------------------------------------------------------
+  // host:set-teams - Host enables teams and sets team names before game starts
+  // -----------------------------------------------------------------------
+  socket.on('host:set-teams', (payload: unknown, callback?: (res: { ok: boolean; error?: string }) => void) => {
+    const cb = callback ?? (() => {});
+    const parsed = (payload as any);
+    const code: string = parsed?.code;
+    const teamNames: string[] = parsed?.teamNames;
+    if (!code || !Array.isArray(teamNames) || teamNames.length < 2) {
+      return cb({ ok: false, error: 'Need at least 2 team names.' });
+    }
+    if (!isGameHost(code, socket.id)) {
+      return cb({ ok: false, error: 'Not the host.' });
+    }
+    const ok = setTeams(code, teamNames);
+    if (!ok) return cb({ ok: false, error: 'Cannot set teams after game starts.' });
+    io.to(code).emit('lobby:teams', { teamsEnabled: true, teamNames });
+    cb({ ok: true });
+  });
 
   // -----------------------------------------------------------------------
   // host:start - Host starts the quiz
@@ -497,6 +528,7 @@ io.on('connection', (socket) => {
       }));
     io.to(code).emit(EVENTS.GAME_RESULTS, {
       leaderboard,
+      teamLeaderboard: getTeamLeaderboard(code),
       quizTitle: game.quizTitle,
       code,
       playedAt: Date.now(),
@@ -541,6 +573,7 @@ function startNextQuestion(code: string): void {
       const game = getGame(code);
       io.to(code).emit(EVENTS.GAME_RESULTS, {
         leaderboard: result.leaderboard,
+        teamLeaderboard: getTeamLeaderboard(code),
         quizTitle: game?.quizTitle,
         code,
         playedAt: Date.now(),

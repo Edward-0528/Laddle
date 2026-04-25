@@ -13,6 +13,7 @@ import { socket } from '../services/socket';
 import { EVENTS } from '../types/events';
 import { useAuth } from '../context/AuthContext';
 import { saveGameResult } from '../services/gameResults';
+import { saveStudentProgress } from '../services/studentProgress';
 import { QRCodeSVG } from 'qrcode.react';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
@@ -26,6 +27,7 @@ interface Player {
   id: string;
   name: string;
   score: number;
+  teamName?: string;
 }
 
 interface Question {
@@ -60,6 +62,7 @@ interface QuestionResult {
 /** Enriched payload emitted by server when all questions are done */
 interface GameResultsPayload {
   leaderboard: RankedPlayer[];
+  teamLeaderboard?: Array<{ teamName: string; score: number; rank: number }>;
   quizTitle?: string;
   code: string;
   playedAt: number;
@@ -106,6 +109,12 @@ const Game = () => {
   const [savedResultId, setSavedResultId] = useState<string | null>(null);
   const [quizTitle, setQuizTitle] = useState<string>('');
   const [reconnectBanner, setReconnectBanner] = useState(false);
+  // Team mode state
+  const [teamsEnabled, setTeamsEnabled] = useState(false);
+  const [teamNames, setTeamNames] = useState<string[]>([]);
+  const [myTeamName, setMyTeamName] = useState<string | null>(null);
+  const [teamLeaderboard, setTeamLeaderboard] = useState<Array<{ teamName: string; score: number; rank: number }>>([]);
+  const [teamSetupInput, setTeamSetupInput] = useState('');
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Ref mirrors isHost so closures registered with [] deps can read current value
@@ -116,9 +125,15 @@ const Game = () => {
     : '';
 
   useEffect(() => {
-    socket.on(EVENTS.GAME_ROLE, (data: { role: 'host' | 'player' }) => {
+    socket.on(EVENTS.GAME_ROLE, (data: { role: 'host' | 'player'; teamName?: string }) => {
       isHostRef.current = data.role === 'host';
       setIsHost(data.role === 'host');
+      if (data.teamName) setMyTeamName(data.teamName);
+    });
+
+    socket.on('lobby:teams', (data: { teamsEnabled: boolean; teamNames: string[] }) => {
+      setTeamsEnabled(data.teamsEnabled);
+      setTeamNames(data.teamNames);
     });
 
     socket.on(EVENTS.LOBBY_UPDATE, (playerList: Player[]) => {
@@ -196,6 +211,27 @@ const Game = () => {
           if (id) setSavedResultId(id);
         });
       }
+      // Logged-in students save their own progress entry
+      if (!isHostRef.current && user) {
+        // Best-effort match: find the leaderboard entry whose name matches the user's display name
+        const displayName = user.displayName?.split(' ')[0] ?? user.email?.split('@')[0] ?? '';
+        const myEntry = data.leaderboard.find(
+          (p) => p.name.toLowerCase() === displayName.toLowerCase()
+        ) ?? data.leaderboard[0]; // fallback: first entry (likely the only player in solo games)
+        if (myEntry) {
+          saveStudentProgress({
+            uid: user.uid,
+            playerName: myEntry.name,
+            quizTitle: data.quizTitle ?? 'Untitled Quiz',
+            gameCode: data.code,
+            score: myEntry.score,
+            rank: myEntry.rank,
+            totalPlayers: data.leaderboard.length,
+            playedAt: data.playedAt,
+          });
+        }
+      }
+      if (data.teamLeaderboard) setTeamLeaderboard(data.teamLeaderboard);
     });
 
     socket.on(EVENTS.PLAYER_RECONNECTED, () => {
@@ -223,6 +259,7 @@ const Game = () => {
 
     return () => {
       socket.off(EVENTS.GAME_ROLE);
+      socket.off('lobby:teams');
       socket.off(EVENTS.LOBBY_UPDATE);
       socket.off(EVENTS.GAME_QUESTION);
       socket.off(EVENTS.GAME_QUESTION_END);
@@ -324,6 +361,18 @@ const Game = () => {
                     <span className="podium-rest-rank">#{entry.rank}</span>
                     <span className="podium-rest-name">{entry.name}</span>
                     <span className="podium-rest-score">{entry.score.toLocaleString()} pts</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {teamsEnabled && teamLeaderboard.length > 0 && (
+              <div className="team-leaderboard">
+                <h2 className="team-leaderboard-title">🏆 Team Results</h2>
+                {teamLeaderboard.map((t) => (
+                  <div key={t.teamName} className={`team-leaderboard-row team-rank-${t.rank}`}>
+                    <span className="team-leaderboard-rank">#{t.rank}</span>
+                    <span className="team-leaderboard-name">{t.teamName}</span>
+                    <span className="team-leaderboard-score">{t.score.toLocaleString()} pts</span>
                   </div>
                 ))}
               </div>
@@ -653,7 +702,12 @@ const Game = () => {
                 ) : (
                   players.map((player) => (
                     <div key={player.id} className="leaderboard-row">
-                      <span className="leaderboard-name">{player.name}</span>
+                      <span className="leaderboard-name">
+                        {player.name}
+                        {teamsEnabled && player.teamName && (
+                          <span className="team-badge">{player.teamName}</span>
+                        )}
+                      </span>
                       <span className="leaderboard-score">{player.score} pts</span>
                     </div>
                   ))
@@ -662,6 +716,30 @@ const Game = () => {
 
               {isHost && (
                 <div className="game-actions">
+                  {/* Team setup */}
+                  <div className="team-setup-row">
+                    <input
+                      className="team-setup-input"
+                      placeholder="Team names (e.g. Red, Blue)"
+                      value={teamSetupInput}
+                      onChange={(e) => setTeamSetupInput(e.target.value)}
+                    />
+                    <button
+                      className="team-setup-btn"
+                      onClick={() => {
+                        const names = teamSetupInput.split(',').map((s) => s.trim()).filter(Boolean);
+                        if (names.length >= 2) socket.emit('host:set-teams', { code, teamNames: names });
+                      }}
+                      disabled={teamSetupInput.split(',').filter((s) => s.trim()).length < 2}
+                    >
+                      {teamsEnabled ? 'Update Teams' : 'Enable Teams'}
+                    </button>
+                  </div>
+                  {teamsEnabled && (
+                    <p className="team-active-notice">
+                      ✅ Teams enabled: {teamNames.join(', ')}
+                    </p>
+                  )}
                   <Button
                     variant="primary"
                     size="lg"
@@ -680,9 +758,16 @@ const Game = () => {
               )}
 
               {!isHost && (
-                <p className="lobby-waiting" style={{ marginTop: '1.5rem' }}>
-                  Waiting for the host to start the quiz...
-                </p>
+                <>
+                  {myTeamName && (
+                    <div className="my-team-banner">
+                      Your team: <strong>{myTeamName}</strong>
+                    </div>
+                  )}
+                  <p className="lobby-waiting" style={{ marginTop: '1.5rem' }}>
+                    Waiting for the host to start the quiz...
+                  </p>
+                </>
               )}
             </div>
           </div>

@@ -83,6 +83,12 @@ const Navbar: React.FC<NavbarProps> = ({
           >
             Join Quiz
           </Link>
+          <Link
+            to="/marketplace"
+            className={`navbar-link ${isActive('/marketplace') ? 'navbar-link-active' : ''}`}
+          >
+            Marketplace
+          </Link>
           {!isAuthenticated && (
             <Link
               to="/pricing"
@@ -110,6 +116,12 @@ const Navbar: React.FC<NavbarProps> = ({
                 className={`navbar-link ${isActive('/org-settings') ? 'navbar-link-active' : ''}`}
               >
                 Brand Settings
+              </Link>
+              <Link
+                to="/my-progress"
+                className={`navbar-link ${isActive('/my-progress') ? 'navbar-link-active' : ''}`}
+              >
+                My Progress
               </Link>
             </>
           )}

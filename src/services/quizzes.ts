@@ -8,9 +8,11 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
+  increment,
   query,
   where,
   orderBy,
+  limit,
   serverTimestamp,
   Timestamp,
 } from 'firebase/firestore';
@@ -52,6 +54,9 @@ export function docToQuiz(docSnap: any): Quiz {
     gradeLevel: data.gradeLevel ?? undefined,
     gradeBand: data.gradeBand ?? undefined,
     caStandard: data.caStandard ?? undefined,
+    standards: data.standards ?? undefined,
+    rating: data.rating ?? 0,
+    forkCount: data.forkCount ?? 0,
   };
 }
 
@@ -166,4 +171,82 @@ export async function incrementQuizStats(
     updatedAt: serverTimestamp(),
   });
   console.log('[Ladle] Quiz stats updated:', quizId);
+}
+
+// ---------------------------------------------------------------------------
+// Marketplace
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns all publicly visible quizzes, ordered by rating desc.
+ * Optionally filter by subject, gradeBand, or a text search on title.
+ */
+export async function getPublicQuizzes(opts: {
+  subject?: string;
+  gradeBand?: string;
+  search?: string;
+  maxResults?: number;
+} = {}): Promise<Quiz[]> {
+  const col = getCollection();
+  let q = query(
+    col,
+    where('isPublic', '==', true),
+    orderBy('rating', 'desc'),
+    limit(opts.maxResults ?? 60)
+  );
+  if (opts.subject) {
+    q = query(col, where('isPublic', '==', true), where('subject', '==', opts.subject), orderBy('rating', 'desc'), limit(opts.maxResults ?? 60));
+  }
+  const snapshot = await safeFetchDocs(q);
+  let results = snapshot.docs.map(docToQuiz);
+  // Client-side grade band + text search (Firestore doesn't support multi-field inequality)
+  if (opts.gradeBand) results = results.filter((qz) => qz.gradeBand === opts.gradeBand);
+  if (opts.search) {
+    const term = opts.search.toLowerCase();
+    results = results.filter(
+      (qz) =>
+        qz.title.toLowerCase().includes(term) ||
+        qz.description.toLowerCase().includes(term) ||
+        qz.category.toLowerCase().includes(term)
+    );
+  }
+  return results;
+}
+
+/**
+ * Upvotes a quiz in the marketplace (increments rating by 1).
+ */
+export async function upvoteQuiz(quizId: string): Promise<void> {
+  if (!db) return;
+  const docRef = getDocRef(COLLECTION_NAME, quizId);
+  await updateDoc(docRef, { rating: increment(1) });
+}
+
+/**
+ * Forks a quiz into the given user's collection and increments forkCount.
+ */
+export async function forkQuiz(quiz: Quiz, userId: string): Promise<string> {
+  const col = getCollection();
+  const docRef = await addDoc(col, {
+    title: `${quiz.title} (Copy)`,
+    description: quiz.description,
+    category: quiz.category,
+    questions: quiz.questions,
+    settings: quiz.settings,
+    stats: { timesPlayed: 0, totalPlayers: 0, averageScore: 0 },
+    createdBy: userId,
+    isPublic: false,
+    isTemplate: false,
+    subject: quiz.subject,
+    gradeLevel: quiz.gradeLevel,
+    gradeBand: quiz.gradeBand,
+    standards: quiz.standards,
+    caStandard: quiz.caStandard,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  // Bump the original's forkCount
+  const origRef = getDocRef(COLLECTION_NAME, quiz.id);
+  await updateDoc(origRef, { forkCount: increment(1) });
+  return docRef.id;
 }

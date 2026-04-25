@@ -8,6 +8,7 @@ export interface GamePlayer {
   id: string;
   name: string;
   score: number;
+  teamName?: string;
 }
 
 export interface GameQuestion {
