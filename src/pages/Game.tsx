@@ -109,6 +109,9 @@ const Game = () => {
   const [savedResultId, setSavedResultId] = useState<string | null>(null);
   const [quizTitle, setQuizTitle] = useState<string>('');
   const [reconnectBanner, setReconnectBanner] = useState(false);
+  // Pause / host-away state
+  const [isPaused, setIsPaused] = useState(false);
+  const [hostAway, setHostAway] = useState(false);
   // Team mode state
   const [teamsEnabled, setTeamsEnabled] = useState(false);
   const [teamNames, setTeamNames] = useState<string[]>([]);
@@ -134,6 +137,58 @@ const Game = () => {
     socket.on('lobby:teams', (data: { teamsEnabled: boolean; teamNames: string[] }) => {
       setTeamsEnabled(data.teamsEnabled);
       setTeamNames(data.teamNames);
+    });
+
+    // Pause / resume
+    socket.on(EVENTS.GAME_PAUSED, () => {
+      setIsPaused(true);
+    });
+
+    socket.on(EVENTS.GAME_RESUMED, (data: { endsAt: number }) => {
+      setIsPaused(false);
+      const remaining = Math.max(0, Math.round((data.endsAt - Date.now()) / 1000));
+      setTimeLeft(remaining);
+      setTotalTime(remaining);
+    });
+
+    // Host away / back (player-side banner)
+    socket.on(EVENTS.HOST_AWAY, () => setHostAway(true));
+    socket.on(EVENTS.HOST_BACK, () => setHostAway(false));
+
+    // Host reconnect — restore state after socket reconnect
+    socket.on(EVENTS.GAME_STATE, (data: {
+      state: string;
+      paused: boolean;
+      currentQuestion?: {
+        index: number;
+        total: number;
+        endsAt?: number;
+        timeRemainingMs?: number;
+        q: { id: string; text: string; choices: string[]; durationSec: number };
+      };
+      players: Player[];
+      answerCount: number;
+    }) => {
+      setPlayers(data.players);
+      setAnswerCount(data.answerCount);
+      setIsPaused(data.paused);
+      if (data.state === 'question' && data.currentQuestion) {
+        const q = data.currentQuestion;
+        setCurrentQuestion({ index: q.index, total: q.total, endsAt: q.endsAt ?? 0, q: q.q });
+        const remaining = data.paused && q.timeRemainingMs != null
+          ? Math.round(q.timeRemainingMs / 1000)
+          : Math.max(0, Math.round(((q.endsAt ?? Date.now()) - Date.now()) / 1000));
+        setTimeLeft(remaining);
+        setTotalTime(q.q.durationSec);
+        setGameState('question');
+      }
+    });
+
+    // On socket reconnect, re-identify as host
+    socket.on('connect', () => {
+      if (isHostRef.current && code) {
+        socket.emit(EVENTS.HOST_RECONNECT, { code });
+      }
     });
 
     socket.on(EVENTS.LOBBY_UPDATE, (playerList: Player[]) => {
@@ -266,6 +321,12 @@ const Game = () => {
       socket.off(EVENTS.GAME_ANSWER_COUNT);
       socket.off(EVENTS.GAME_RESULTS);
       socket.off(EVENTS.GAME_ENDED);
+      socket.off(EVENTS.GAME_PAUSED);
+      socket.off(EVENTS.GAME_RESUMED);
+      socket.off(EVENTS.GAME_STATE);
+      socket.off(EVENTS.HOST_AWAY);
+      socket.off(EVENTS.HOST_BACK);
+      socket.off('connect');
       socket.off(EVENTS.PLAYER_ANSWER_ACK);
       socket.off(EVENTS.PLAYER_RECONNECTED);
       if (timerRef.current) clearTimeout(timerRef.current);
@@ -273,13 +334,13 @@ const Game = () => {
     };
   }, []);
 
-  // Countdown timer
+  // Countdown timer — stops while paused
   useEffect(() => {
-    if (gameState === 'question' && timeLeft > 0) {
+    if (gameState === 'question' && timeLeft > 0 && !isPaused) {
       timerRef.current = setTimeout(() => setTimeLeft((t) => t - 1), 1000);
       return () => { if (timerRef.current) clearTimeout(timerRef.current); };
     }
-  }, [gameState, timeLeft]);
+  }, [gameState, timeLeft, isPaused]);
 
   function startGame() {
     socket.emit(EVENTS.HOST_START, { code });
@@ -565,12 +626,28 @@ const Game = () => {
 
             {/* Host controls */}
             <div className="host-controls">
+              {/* Pause / Resume */}
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => socket.emit(isPaused ? EVENTS.HOST_RESUME : EVENTS.HOST_PAUSE, { code })}
+              >
+                {isPaused ? '▶ Resume' : '⏸ Pause'}
+              </Button>
+              {/* Add 30s */}
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => socket.emit(EVENTS.HOST_EXTEND_TIME, { code, extraSeconds: 30 })}
+              >
+                +30s
+              </Button>
               <Button
                 variant="secondary"
                 size="sm"
                 onClick={() => socket.emit(EVENTS.HOST_SKIP, { code })}
               >
-                Skip Question
+                Skip
               </Button>
               <Button
                 variant="danger"
@@ -584,6 +661,14 @@ const Game = () => {
                 End Game
               </Button>
             </div>
+
+            {/* Pause overlay shown to host */}
+            {isPaused && (
+              <div className="pause-overlay">
+                <span className="pause-overlay-icon">⏸</span>
+                <span className="pause-overlay-text">Game Paused</span>
+              </div>
+            )}
 
           </div>
         </div>
@@ -655,6 +740,19 @@ const Game = () => {
             )}
             {timeLeft <= 0 && !hasAnswered && (
               <div className="time-up-banner" role="alert">Time is up!</div>
+            )}
+            {/* Player pause overlay */}
+            {isPaused && (
+              <div className="pause-overlay" role="status" aria-live="polite">
+                <span className="pause-overlay-icon">⏸</span>
+                <span className="pause-overlay-text">Host paused the game</span>
+              </div>
+            )}
+            {/* Host-away banner */}
+            {hostAway && !isPaused && (
+              <div className="host-away-banner" role="status" aria-live="polite">
+                Host disconnected — waiting for them to return...
+              </div>
             )}
           </div>
         </div>

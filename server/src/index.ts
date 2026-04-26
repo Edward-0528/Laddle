@@ -56,6 +56,11 @@ import {
   setTeams,
   assignPlayerTeam,
   getTeamLeaderboard,
+  pauseGame,
+  resumeGame,
+  extendQuestionTime,
+  reconnectHost,
+  abandonGame,
   QuestionResult,
 } from './services/gameManager';
 
@@ -298,6 +303,13 @@ const io = new Server(server, {
     methods: ['GET', 'POST'],
   },
 });
+
+// ---------------------------------------------------------------------------
+// Per-game timer handles — lets us cancel / replace timers for pause & extend
+// ---------------------------------------------------------------------------
+const questionTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const revealTimers   = new Map<string, ReturnType<typeof setTimeout>>();
+const hostAbandonTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 // ---------------------------------------------------------------------------
 // Socket Event Handlers
@@ -545,14 +557,136 @@ io.on('connection', (socket) => {
     const result = handleDisconnect(socket.id);
 
     if (result.type === 'host' && result.code) {
-      io.to(result.code).emit('game:ended');
+      if (result.keepAlive) {
+        // Game kept alive — give host 90s to reconnect before ending for everyone
+        const code = result.code;
+        io.to(code).emit('host:away');  // players see a "host disconnected" banner
+        const t = setTimeout(() => {
+          const game = getGame(code);
+          if (game && !game.hostConnected) {
+            io.to(code).emit(EVENTS.GAME_ENDED);
+            abandonGame(code);
+            questionTimers.delete(code);
+            revealTimers.delete(code);
+          }
+          hostAbandonTimers.delete(code);
+        }, 90_000);
+        hostAbandonTimers.set(code, t);
+      } else {
+        io.to(result.code).emit(EVENTS.GAME_ENDED);
+      }
     } else if (result.type === 'player' && result.code && result.players) {
-      io.to(result.code).emit('lobby:update', result.players);
+      io.to(result.code).emit(EVENTS.LOBBY_UPDATE, result.players);
     }
 
     // Clean up rate limit entries for this socket
     clearRateLimits(socket.id);
   });
+
+  // -----------------------------------------------------------------------
+  // host:reconnect - Host re-identifies after losing connection
+  // -----------------------------------------------------------------------
+  socket.on('host:reconnect', (payload: unknown) => {
+    const code = (payload as any)?.code;
+    if (typeof code !== 'string') return;
+
+    const result = reconnectHost(code, socket.id);
+    if (!result.ok || !result.game) {
+      socket.emit('host:reconnect:failed');
+      return;
+    }
+
+    // Cancel the abandon timer
+    const t = hostAbandonTimers.get(code);
+    if (t) { clearTimeout(t); hostAbandonTimers.delete(code); }
+
+    socket.join(code);
+
+    // Tell players the host is back
+    io.to(code).emit('host:back');
+
+    // Send current game state snapshot back to the host
+    const game = result.game;
+    const currentQ = game.questions[game.currentQuestionIndex];
+    socket.emit('game:state', {
+      state: game.state,
+      paused: game.paused,
+      currentQuestion: currentQ ? {
+        index: game.currentQuestionIndex,
+        total: game.questions.length,
+        endsAt: game.questionEndsAt,
+        timeRemainingMs: game.paused ? game.pauseTimeRemainingMs : undefined,
+        q: {
+          id: currentQ.id,
+          text: currentQ.text,
+          choices: currentQ.choices,
+          durationSec: currentQ.durationSec,
+        },
+      } : undefined,
+      players: getPlayerList(code),
+      answerCount: Object.keys(game.answers).length,
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // host:pause - Host pauses the current question timer
+  // -----------------------------------------------------------------------
+  socket.on('host:pause', (payload: unknown) => {
+    const code = (payload as any)?.code;
+    if (!code || !isGameHost(code, socket.id)) return;
+    const result = pauseGame(code);
+    if (!result.ok) return;
+    // Clear the pending question-end timer
+    const t = questionTimers.get(code);
+    if (t) { clearTimeout(t); questionTimers.delete(code); }
+    io.to(code).emit('game:paused', { timeRemainingMs: result.timeRemainingMs });
+  });
+
+  // -----------------------------------------------------------------------
+  // host:resume - Host resumes a paused question
+  // -----------------------------------------------------------------------
+  socket.on('host:resume', (payload: unknown) => {
+    const code = (payload as any)?.code;
+    if (!code || !isGameHost(code, socket.id)) return;
+    const result = resumeGame(code);
+    if (!result.ok || !result.newEndsAt) return;
+    const game = getGame(code);
+    if (!game) return;
+    // Reschedule the question-end timer with remaining time
+    const remaining = result.newEndsAt - Date.now();
+    const qi = game.currentQuestionIndex;
+    const t = setTimeout(() => endCurrentQuestion(code, qi), Math.max(remaining + 500, 500));
+    questionTimers.set(code, t);
+    io.to(code).emit('game:resumed', { endsAt: result.newEndsAt });
+  });
+
+  // -----------------------------------------------------------------------
+  // host:extend-time - Host adds extra seconds to the current question
+  // -----------------------------------------------------------------------
+  socket.on('host:extend-time', (payload: unknown) => {
+    const code = (payload as any)?.code;
+    const extraSeconds = Number((payload as any)?.extraSeconds) || 30;
+    if (!code || !isGameHost(code, socket.id)) return;
+    const result = extendQuestionTime(code, extraSeconds);
+    if (!result.ok) return;
+    const game = getGame(code);
+    if (!game) return;
+
+    if (game.paused) {
+      // Just update the displayed remaining time for the host; timer isn't running
+      io.to(code).emit('game:paused', { timeRemainingMs: result.newTimeRemainingMs });
+    } else if (result.newEndsAt) {
+      // Reschedule the end timer
+      const t = questionTimers.get(code);
+      if (t) clearTimeout(t);
+      const qi = game.currentQuestionIndex;
+      const remaining = result.newEndsAt - Date.now();
+      const nt = setTimeout(() => endCurrentQuestion(code, qi), Math.max(remaining + 500, 500));
+      questionTimers.set(code, nt);
+      io.to(code).emit('game:resumed', { endsAt: result.newEndsAt });
+    }
+  });
+
 });
 
 // ---------------------------------------------------------------------------
@@ -591,14 +725,13 @@ function startNextQuestion(code: string): void {
       q: result.questionData.question,
     });
 
-    // Tag each timer with the question index so stale timers from a previous
-    // question (e.g. triggered when all players answered early) don't fire
-    // and accidentally end the *next* question.
+    // Store timer handle so pause/extend can cancel it
     const questionIndex = result.questionData.index;
     const durationMs = result.questionData.question.durationSec * 1000;
-    setTimeout(() => {
+    const t = setTimeout(() => {
       endCurrentQuestion(code, questionIndex);
     }, durationMs + 500); // 500ms buffer for network latency
+    questionTimers.set(code, t);
   }
 }
 
@@ -613,6 +746,10 @@ function endCurrentQuestion(code: string, questionIndex: number): void {
   // Guard: only finalize if we are still on the same question that scheduled this call
   if (!game || game.state !== 'question') return;
   if (game.currentQuestionIndex !== questionIndex) return;
+  // Guard: if game is paused, the pause handler will reschedule this call
+  if (game.paused) return;
+
+  questionTimers.delete(code);
 
   const result: QuestionResult | null = finalizeQuestion(code);
   if (result === null) return;
@@ -620,9 +757,11 @@ function endCurrentQuestion(code: string, questionIndex: number): void {
   io.to(code).emit('game:question:end', result);
 
   // Pause between questions to show the answer reveal screen
-  setTimeout(() => {
+  const t = setTimeout(() => {
+    revealTimers.delete(code);
     startNextQuestion(code);
   }, 5000);
+  revealTimers.set(code, t);
 }
 
 // ---------------------------------------------------------------------------

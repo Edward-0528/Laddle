@@ -12,13 +12,17 @@
 
 export const EVENTS = {
   // ---- Client → Server ----
-  HOST_CREATE:    'host:create',
-  HOST_START:     'host:start',
-  HOST_SKIP:      'host:skip',
-  HOST_END_GAME:  'host:end',
-  PLAYER_JOIN:    'player:join',
-  PLAYER_ANSWER:  'player:answer',
-  LOBBY_REQUEST:  'lobby:request',
+  HOST_CREATE:      'host:create',
+  HOST_START:       'host:start',
+  HOST_SKIP:        'host:skip',
+  HOST_END_GAME:    'host:end',
+  HOST_PAUSE:       'host:pause',
+  HOST_RESUME:      'host:resume',
+  HOST_EXTEND_TIME: 'host:extend-time',
+  HOST_RECONNECT:   'host:reconnect',
+  PLAYER_JOIN:      'player:join',
+  PLAYER_ANSWER:    'player:answer',
+  LOBBY_REQUEST:    'lobby:request',
 
   // ---- Server → Client ----
   GAME_ROLE:          'game:role',
@@ -27,6 +31,11 @@ export const EVENTS = {
   GAME_ANSWER_COUNT:  'game:answer:count',
   GAME_RESULTS:       'game:results',
   GAME_ENDED:         'game:ended',
+  GAME_PAUSED:        'game:paused',
+  GAME_RESUMED:       'game:resumed',
+  GAME_STATE:         'game:state',
+  HOST_AWAY:          'host:away',
+  HOST_BACK:          'host:back',
   LOBBY_UPDATE:       'lobby:update',
   PLAYER_ANSWER_ACK:  'player:answer:ack',
   PLAYER_RECONNECTED: 'player:reconnected',

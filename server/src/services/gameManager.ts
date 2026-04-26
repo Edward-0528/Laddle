@@ -51,6 +51,12 @@ export interface Game {
   quizTitle?: string;
   teamsEnabled: boolean;
   teamNames: string[];   // ordered list of team names
+  // Pause state
+  paused: boolean;
+  pauseTimeRemainingMs?: number;   // ms left on clock when paused
+  // Host reconnect state
+  hostConnected: boolean;
+  hostDisconnectedAt?: number;
 }
 
 export interface QuestionResult {
@@ -150,6 +156,8 @@ export function createGame(hostSocketId: string, questions: Question[], quizTitl
     quizTitle,
     teamsEnabled: false,
     teamNames: [],
+    paused: false,
+    hostConnected: true,
   };
 
   logger.info('Game created', { code, hostSocketId, questionCount: questions.length });
@@ -245,6 +253,8 @@ export function advanceToNextQuestion(code: string): {
 
   const question = game.questions[game.currentQuestionIndex];
   game.state = 'question';
+  game.paused = false;
+  game.pauseTimeRemainingMs = undefined;
   game.questionEndsAt = Date.now() + question.durationSec * 1000;
 
   logger.info('Question started', {
@@ -409,6 +419,7 @@ export function handleDisconnect(socketId: string): {
   type: 'host' | 'player' | 'none';
   code?: string;
   players?: Player[];
+  keepAlive?: boolean;  // true = game kept alive, caller should NOT emit game:ended yet
 } {
   const game = Object.values(games).find(
     (g) => g.players[socketId] || g.hostSocketId === socketId
@@ -418,9 +429,20 @@ export function handleDisconnect(socketId: string): {
 
   if (game.hostSocketId === socketId) {
     const code = game.code;
+
+    // If the game is active (in-progress), keep it alive so the host can reconnect.
+    // The caller is responsible for setting a reconnect timeout.
+    if (game.state !== 'lobby' && game.state !== 'results' && game.state !== 'ended') {
+      game.hostConnected = false;
+      game.hostDisconnectedAt = Date.now();
+      logger.info('Host disconnected from active game — keeping alive for reconnect', { code });
+      return { type: 'host', code, keepAlive: true };
+    }
+
+    // Lobby or finished game — delete immediately
     delete games[code];
     logger.info('Game ended - host disconnected', { code });
-    return { type: 'host', code };
+    return { type: 'host', code, keepAlive: false };
   }
 
   if (game.players[socketId]) {
@@ -454,6 +476,90 @@ export function handleDisconnect(socketId: string): {
  */
 export function removeGame(code: string): void {
   delete games[code];
+}
+
+// ---------------------------------------------------------------------------
+// Pause / Resume / Extend Time
+// ---------------------------------------------------------------------------
+
+/**
+ * Pauses the current question. Records the remaining milliseconds so the
+ * timer can be resumed accurately. Returns ok:false if the game is not in
+ * question state or already paused.
+ */
+export function pauseGame(code: string): { ok: boolean; timeRemainingMs?: number } {
+  const game = games[code];
+  if (!game || game.state !== 'question' || game.paused) return { ok: false };
+  const timeRemainingMs = Math.max(0, (game.questionEndsAt ?? Date.now()) - Date.now());
+  game.paused = true;
+  game.pauseTimeRemainingMs = timeRemainingMs;
+  logger.info('Game paused', { code, timeRemainingMs });
+  return { ok: true, timeRemainingMs };
+}
+
+/**
+ * Resumes a paused question. Resets questionEndsAt based on remaining time.
+ * Returns the new endsAt timestamp so clients can resync their timers.
+ */
+export function resumeGame(code: string): { ok: boolean; newEndsAt?: number } {
+  const game = games[code];
+  if (!game || game.state !== 'question' || !game.paused) return { ok: false };
+  const remaining = game.pauseTimeRemainingMs ?? 10_000;
+  game.paused = false;
+  game.pauseTimeRemainingMs = undefined;
+  game.questionEndsAt = Date.now() + remaining;
+  logger.info('Game resumed', { code, remaining });
+  return { ok: true, newEndsAt: game.questionEndsAt };
+}
+
+/**
+ * Adds extra seconds to the current question timer. Works whether the game
+ * is paused or actively running. Returns the new endsAt so clients resync.
+ */
+export function extendQuestionTime(
+  code: string,
+  extraSeconds: number
+): { ok: boolean; newEndsAt?: number; newTimeRemainingMs?: number } {
+  const game = games[code];
+  if (!game || game.state !== 'question') return { ok: false };
+  const extraMs = extraSeconds * 1000;
+  if (game.paused) {
+    game.pauseTimeRemainingMs = (game.pauseTimeRemainingMs ?? 0) + extraMs;
+    logger.info('Extended paused question time', { code, extraSeconds });
+    return { ok: true, newTimeRemainingMs: game.pauseTimeRemainingMs };
+  }
+  game.questionEndsAt = (game.questionEndsAt ?? Date.now()) + extraMs;
+  logger.info('Extended active question time', { code, extraSeconds });
+  return { ok: true, newEndsAt: game.questionEndsAt };
+}
+
+/**
+ * Re-registers a new socket as the host of an active game.
+ * Only succeeds if the game exists and the host slot is marked as disconnected.
+ */
+export function reconnectHost(
+  code: string,
+  newSocketId: string
+): { ok: boolean; game?: Game } {
+  const game = games[code];
+  if (!game) return { ok: false };
+  if (game.hostConnected) return { ok: false };   // host is already connected (or game just started)
+  game.hostSocketId = newSocketId;
+  game.hostConnected = true;
+  game.hostDisconnectedAt = undefined;
+  logger.info('Host reconnected', { code, newSocketId });
+  return { ok: true, game };
+}
+
+/**
+ * Forcibly ends a game that the host abandoned (reconnect timeout elapsed).
+ */
+export function abandonGame(code: string): void {
+  const game = games[code];
+  if (game) {
+    delete games[code];
+    logger.info('Game abandoned - host reconnect timeout', { code });
+  }
 }
 
 // ---------------------------------------------------------------------------
