@@ -172,3 +172,33 @@
   border-radius: 6px;
   transition: background 0.2s;
 }
+
+/* -------- Responsive -------- */
+@media (max-width: 640px) {
+  .os-container {
+    padding: 0 1rem;
+  }
+
+  .os-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .os-title {
+    font-size: 1.375rem;
+  }
+
+  .os-section {
+    padding: 1.125rem 1rem;
+  }
+
+  .os-logo-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.875rem;
+  }
+
+  .os-color-custom-row {
+    flex-wrap: wrap;
+  }
+}

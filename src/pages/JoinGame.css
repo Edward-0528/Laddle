@@ -58,3 +58,27 @@
   margin: 0;
   line-height: 1.5;
 }
+
+/* -------- Responsive -------- */
+@media (max-width: 480px) {
+  .join-game {
+    padding: 2rem 0;
+    align-items: flex-start;
+  }
+
+  .join-card {
+    text-align: left;
+  }
+
+  .join-title {
+    font-size: 1.375rem;
+  }
+
+  .join-subtitle {
+    font-size: 0.9rem;
+  }
+
+  .join-hint {
+    font-size: 0.75rem;
+  }
+}

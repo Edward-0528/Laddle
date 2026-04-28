@@ -178,3 +178,50 @@
 .sd-rank-badge.bronze { background: rgba(180, 83, 9, 0.12); color: #92400e; }
 
 .sd-td-date { color: var(--color-text-secondary); font-size: 0.825rem; white-space: nowrap; }
+
+/* -------- Responsive -------- */
+@media (max-width: 640px) {
+  .sd-container {
+    padding: 0 1rem;
+  }
+
+  .sd-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .sd-title {
+    font-size: 1.375rem;
+  }
+
+  .sd-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* Make table easier to scroll on small screens */
+  .sd-table-wrap {
+    border-radius: 8px;
+  }
+
+  .sd-table th,
+  .sd-table td {
+    padding: 0.625rem 0.75rem;
+    font-size: 0.8rem;
+  }
+
+  /* Hide less critical columns on very small screens */
+  .sd-td-date {
+    display: none;
+  }
+}
+
+@media (max-width: 400px) {
+  .sd-stats {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.625rem;
+  }
+
+  .sd-stat-value {
+    font-size: 1.375rem;
+  }
+}

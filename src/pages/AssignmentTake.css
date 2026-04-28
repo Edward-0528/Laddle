@@ -253,3 +253,34 @@
   color: var(--color-text-muted, #999);
   margin: 0;
 }
+
+/* -------- Responsive -------- */
+@media (max-width: 480px) {
+  .at-page {
+    padding: 1rem 0.875rem 3rem;
+  }
+
+  .at-name-card {
+    padding: 1.5rem 1.125rem;
+    margin-top: 1rem;
+  }
+
+  .at-quiz-title {
+    font-size: 1.2rem;
+  }
+
+  .at-question-text {
+    font-size: 1.05rem;
+  }
+
+  .at-choice {
+    padding: 0.75rem 0.875rem;
+    font-size: 0.9rem;
+  }
+
+  .at-choice-letter {
+    width: 1.75rem;
+    height: 1.75rem;
+    font-size: 0.78rem;
+  }
+}
