@@ -371,6 +371,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 0.75rem;
   padding: 1rem 1.75rem 1.25rem;
   border-top: 1px solid var(--color-border);
@@ -391,5 +392,14 @@
 
   .import-modal-tabs {
     padding: 0 1rem;
+  }
+
+  .import-modal-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .import-modal-footer > * {
+    width: 100%;
   }
 }

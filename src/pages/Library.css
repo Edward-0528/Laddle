@@ -332,6 +332,7 @@
 
 .library-card-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.625rem;
 }
 
@@ -492,6 +493,7 @@
 .library-modal-footer {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 0.75rem;
   padding: 1rem 1.5rem;
   border-top: 1px solid var(--color-border);
