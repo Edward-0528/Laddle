@@ -429,6 +429,19 @@
   }
 }
 
+@media (max-width: 768px) {
+  .hero-join-form {
+    flex-direction: column;
+    width: 100%;
+    max-width: 340px;
+  }
+
+  .hero-code-input {
+    width: 100%;
+    text-align: center;
+  }
+}
+
 @media (max-width: 640px) {
   .hero {
     padding: 4rem 0 6rem;
@@ -439,14 +452,7 @@
   }
 
   .hero-join-form {
-    flex-direction: column;
-    width: 100%;
     max-width: 300px;
-  }
-
-  .hero-code-input {
-    width: 100%;
-    text-align: center;
   }
 
   .features-grid,

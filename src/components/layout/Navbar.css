@@ -10,6 +10,9 @@
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--color-border-light);
   height: var(--nav-height);
+  /* Clip anything that might bleed past the nav bar width */
+  max-width: 100vw;
+  overflow: visible;
 }
 
 .navbar-inner {

@@ -124,3 +124,20 @@
     transform: rotate(360deg);
   }
 }
+
+/* -------- Responsive -------- */
+
+@media (max-width: 480px) {
+  /* Allow button text to wrap rather than overflow the viewport */
+  .btn {
+    white-space: normal;
+    text-align: center;
+    max-width: 100%;
+  }
+
+  /* Tighten lg padding on small screens */
+  .btn-lg {
+    padding: var(--space-3) var(--space-6);
+    font-size: var(--font-size-base);
+  }
+}
