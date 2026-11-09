@@ -1,84 +1,64 @@
-/* ---------------------------------------------------------------------------
-   Join Game Page Styles
-   --------------------------------------------------------------------------- */
+/* Join Game — Sticker Sheet */
 
-.join-game {
-  padding: 4rem 0;
-  min-height: 60vh;
-  display: flex;
-  align-items: center;
-}
-
-.join-game-inner {
-  display: flex;
-  justify-content: center;
-}
-
-.join-card {
-  max-width: 460px;
-  width: 100%;
-  text-align: center;
-}
-
-.join-title {
-  font-size: 1.75rem;
-  font-weight: 700;
-  color: var(--color-text-primary);
-  margin: 0 0 0.5rem;
-}
-
-.join-subtitle {
-  font-size: 1rem;
-  color: var(--color-text-secondary);
-  margin: 0 0 2rem;
-  line-height: 1.5;
-}
-
-.join-form {
+.join__inner {
+  max-width: 440px;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 28px 20px 24px;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  text-align: left;
-  margin-bottom: 1.5rem;
+  gap: 18px;
 }
 
-.join-error {
-  font-size: 0.875rem;
-  color: var(--color-error);
-  background: #fef2f2;
-  border: 1px solid var(--color-error);
-  border-radius: var(--radius-sm);
-  padding: 0.75rem 1rem;
-  text-align: center;
+.join__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.join__brand { font-size: 1.75rem; }
+
+.join__code-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--st-lemon);
+  border: 5px solid var(--st-white);
+  border-radius: 16px;
+  box-shadow: var(--st-shadow-sm);
+  padding: 4px 12px;
+  cursor: pointer;
+  min-height: 44px;
 }
+.join__code-chip-code { font-family: var(--st-font-code); font-weight: 700; font-size: 1.25rem; letter-spacing: 0.12em; color: var(--st-ink); }
+.join__code-chip-edit { font-weight: 800; font-size: 0.85rem; color: var(--st-ink-soft); text-decoration: underline; }
 
-.join-hint {
-  font-size: 0.813rem;
-  color: var(--color-text-tertiary);
-  margin: 0;
-  line-height: 1.5;
+.join__field { display: flex; flex-direction: column; gap: 8px; }
+.join__hint { font-size: 0.95rem; }
+
+.join__me { display: flex; align-items: center; gap: 16px; }
+.join__me-avatar { flex-shrink: 0; line-height: 0; }
+.join__me-text { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.join__me-title { font-size: 1.7rem; }
+.join__shuffle { align-self: flex-start; min-height: 46px; font-size: 1.05rem; padding: 0 18px; }
+
+.join__picker { border: 0; display: flex; flex-direction: column; gap: 8px; }
+.join__picker-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.join__pick {
+  height: 60px;
+  border-radius: 16px;
+  border: 4px solid var(--st-white);
+  background: var(--st-white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform var(--st-dur-fast) var(--st-ease-pop);
 }
+.join__pick:hover { transform: rotate(-4deg) scale(1.05); }
+.join__pick.is-on { border-color: var(--st-ink); background: var(--st-lemon); }
+.join__pick:focus-visible { outline: 4px solid var(--st-grape); outline-offset: 2px; }
 
-/* -------- Responsive -------- */
-@media (max-width: 480px) {
-  .join-game {
-    padding: 2rem 0;
-    align-items: flex-start;
-  }
+.join__spacer { flex: 1; min-height: 8px; }
 
-  .join-card {
-    text-align: left;
-  }
-
-  .join-title {
-    font-size: 1.375rem;
-  }
-
-  .join-subtitle {
-    font-size: 0.9rem;
-  }
-
-  .join-hint {
-    font-size: 0.75rem;
-  }
+@media (max-height: 720px) {
+  .join__picker-grid { grid-template-columns: repeat(10, minmax(0, 1fr)); }
+  .join__pick { height: 40px; border-width: 3px; }
+  .join__pick img { width: 32px !important; height: 32px !important; }
 }

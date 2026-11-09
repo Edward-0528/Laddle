@@ -1,22 +1,24 @@
 // ---------------------------------------------------------------------------
-// Game Page
-// Full Kahoot-style game experience with speed-based scoring, streak bonuses,
-// animated countdown timer, fullscreen animated reveal between questions,
-// rank deltas, live leaderboard, and an animated final podium.
-// Host is spectator-only: sees question + live answer counts + leaderboard.
-// Players see the question and answer choices only.
+// Game Page (Sticker Sheet)
+// One component, two audiences:
+//   Host (big screen): sticker-wall lobby, question columns, reveal that turns
+//     the columns into a bar chart, top-5 leaderboard, staged podium.
+//   Player (phone): "you're stuck in" lobby, 2x2 answer stickers in the thumb
+//     zone, a personal result card after every question, final placement card.
+// Socket protocol is unchanged apart from the optional `avatar` field.
 // ---------------------------------------------------------------------------
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { socket } from '../services/socket';
+import { clearPlayerToken, getHostToken, getPlayerToken } from '../services/session';
 import { EVENTS } from '../types/events';
 import { useAuth } from '../context/AuthContext';
 import { saveGameResult } from '../services/gameResults';
 import { saveStudentProgress } from '../services/studentProgress';
 import { QRCodeSVG } from 'qrcode.react';
-import Button from '../components/ui/Button';
-import Card from '../components/ui/Card';
+import Avatar from '../components/sticker/Avatar';
+import AnswerShape, { answerStyle, ArrowIcon, CheckIcon, CrossIcon } from '../components/sticker/AnswerShape';
 import './Game.css';
 
 // ---------------------------------------------------------------------------
@@ -27,6 +29,7 @@ interface Player {
   id: string;
   name: string;
   score: number;
+  avatar?: string;
   teamName?: string;
 }
 
@@ -47,6 +50,7 @@ interface GameData {
 interface RankedPlayer {
   rank: number;
   name: string;
+  avatar?: string;
   score: number;
   pointsEarned: number;
   streak: number;
@@ -59,7 +63,6 @@ interface QuestionResult {
   leaderboard: RankedPlayer[];
 }
 
-/** Enriched payload emitted by server when all questions are done */
 interface GameResultsPayload {
   leaderboard: RankedPlayer[];
   teamLeaderboard?: Array<{ teamName: string; score: number; rank: number }>;
@@ -68,21 +71,27 @@ interface GameResultsPayload {
   playedAt: number;
 }
 
-// ---------------------------------------------------------------------------
-// Choice color theme (Kahoot-style: red, blue, yellow, green)
-// ---------------------------------------------------------------------------
+type RevealPhase = 'correct' | 'leaderboard';
 
-const CHOICE_COLORS = [
-  { base: '#E53E3E', light: 'rgba(229, 62, 62, 0.15)', label: 'A' },
-  { base: '#3182CE', light: 'rgba(49, 130, 206, 0.15)', label: 'B' },
-  { base: '#D69E2E', light: 'rgba(214, 158, 46, 0.15)', label: 'C' },
-  { base: '#38A169', light: 'rgba(56, 161, 105, 0.15)', label: 'D' },
-];
+const STICKER_TILTS = [-6, 4, -3, 7, -8, 2, 5, -5];
+const CHIP_COLORS = ['var(--st-answer-1)', 'var(--st-answer-2)', 'var(--st-answer-3)', '#2EE6A8', '#FF6B5A', '#B48CFF'];
+const CONFETTI_COLORS = ['#FF4FA3', '#3D8BFF', '#FFC83D', '#7B3CFF', '#2EE6A8', '#FF6B5A'];
 
-// ---------------------------------------------------------------------------
-// Reveal sub-screens
-// ---------------------------------------------------------------------------
-type RevealPhase = 'correct' | 'scores' | 'leaderboard';
+function readMe(code?: string): { name: string; avatar?: string } | null {
+  if (!code) return null;
+  try {
+    const raw = sessionStorage.getItem(`ladle.me.${code}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -92,7 +101,9 @@ const Game = () => {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [gameState, setGameState] = useState<'lobby' | 'question' | 'reveal' | 'results' | 'ended'>('lobby');
+  const [gameState, setGameState] = useState<'lobby' | 'question' | 'reveal' | 'results' | 'ended' | 'gone'>('lobby');
+  const [offline, setOffline] = useState(!socket.connected);
+  const [resumedMidGame, setResumedMidGame] = useState(false);
   const [players, setPlayers] = useState<Player[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState<GameData | null>(null);
   const [timeLeft, setTimeLeft] = useState(0);
@@ -102,30 +113,27 @@ const Game = () => {
   const [questionResult, setQuestionResult] = useState<QuestionResult | null>(null);
   const [leaderboard, setLeaderboard] = useState<RankedPlayer[]>([]);
   const [isHost, setIsHost] = useState(false);
-  const [questionTransition, setQuestionTransition] = useState(false);
   const [answerCount, setAnswerCount] = useState(0);
   const [revealPhase, setRevealPhase] = useState<RevealPhase>('correct');
-  const [animatedScores, setAnimatedScores] = useState<Record<string, number>>({});
   const [savedResultId, setSavedResultId] = useState<string | null>(null);
   const [quizTitle, setQuizTitle] = useState<string>('');
   const [reconnectBanner, setReconnectBanner] = useState(false);
-  // Pause / host-away state
   const [isPaused, setIsPaused] = useState(false);
   const [hostAway, setHostAway] = useState(false);
-  // Team mode state
   const [teamsEnabled, setTeamsEnabled] = useState(false);
   const [teamNames, setTeamNames] = useState<string[]>([]);
   const [myTeamName, setMyTeamName] = useState<string | null>(null);
   const [teamLeaderboard, setTeamLeaderboard] = useState<Array<{ teamName: string; score: number; rank: number }>>([]);
   const [teamSetupInput, setTeamSetupInput] = useState('');
+  const [showTeams, setShowTeams] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Ref mirrors isHost so closures registered with [] deps can read current value
   const isHostRef = useRef(false);
+  const me = useMemo(() => readMe(code), [code]);
 
-  const joinUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/join?code=${code}`
-    : '';
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const joinUrl = `${origin}/j/${code}`;
+  const joinHost = origin.replace(/^https?:\/\//, '');
 
   useEffect(() => {
     socket.on(EVENTS.GAME_ROLE, (data: { role: 'host' | 'player'; teamName?: string }) => {
@@ -139,10 +147,7 @@ const Game = () => {
       setTeamNames(data.teamNames);
     });
 
-    // Pause / resume
-    socket.on(EVENTS.GAME_PAUSED, () => {
-      setIsPaused(true);
-    });
+    socket.on(EVENTS.GAME_PAUSED, () => setIsPaused(true));
 
     socket.on(EVENTS.GAME_RESUMED, (data: { endsAt: number }) => {
       setIsPaused(false);
@@ -151,11 +156,9 @@ const Game = () => {
       setTotalTime(remaining);
     });
 
-    // Host away / back (player-side banner)
     socket.on(EVENTS.HOST_AWAY, () => setHostAway(true));
     socket.on(EVENTS.HOST_BACK, () => setHostAway(false));
 
-    // Host reconnect — restore state after socket reconnect
     socket.on(EVENTS.GAME_STATE, (data: {
       state: string;
       paused: boolean;
@@ -164,7 +167,7 @@ const Game = () => {
         total: number;
         endsAt?: number;
         timeRemainingMs?: number;
-        q: { id: string; text: string; choices: string[]; durationSec: number };
+        q: Question;
       };
       players: Player[];
       answerCount: number;
@@ -184,37 +187,70 @@ const Game = () => {
       }
     });
 
-    // On socket reconnect, re-identify as host
-    socket.on('connect', () => {
-      if (isHostRef.current && code) {
-        socket.emit(EVENTS.HOST_RECONNECT, { code });
+    // Re-identify with our secret token on every (re)connect.
+    const reclaim = () => {
+      if (!code) return;
+      const hostToken = getHostToken(code);
+      const playerToken = getPlayerToken(code);
+      if (hostToken && isHostRef.current) socket.emit(EVENTS.HOST_RECONNECT, { code, hostToken });
+      else if (playerToken) socket.emit(EVENTS.SESSION_RESUME, { code, playerToken });
+    };
+    // The socket may have connected between first render and this effect
+    setOffline(!socket.connected);
+    socket.on('connect', () => { setOffline(false); reclaim(); });
+    socket.on('disconnect', () => setOffline(true));
+
+    socket.on(EVENTS.HOST_RECONNECT_FAILED, () => setGameState('gone'));
+    socket.on(EVENTS.SESSION_RESUME_FAILED, () => {
+      if (code) clearPlayerToken(code);
+      setGameState('gone');
+    });
+
+    // Player resumed: rebuild the screen from the server's snapshot.
+    socket.on(EVENTS.PLAYER_STATE, (data: {
+      state: string;
+      paused: boolean;
+      currentQuestion?: { index: number; total: number; endsAt?: number; timeRemainingMs?: number; q: Question };
+      answered: boolean;
+      choiceIndex?: number;
+      players: Player[];
+    }) => {
+      setPlayers(data.players);
+      setIsPaused(data.paused);
+      if (data.state === 'question' && data.currentQuestion) {
+        const q = data.currentQuestion;
+        setCurrentQuestion({ index: q.index, total: q.total, endsAt: q.endsAt ?? 0, q: q.q });
+        const remaining = data.paused && q.timeRemainingMs != null
+          ? Math.round(q.timeRemainingMs / 1000)
+          : Math.max(0, Math.round(((q.endsAt ?? Date.now()) - Date.now()) / 1000));
+        setTimeLeft(remaining);
+        setTotalTime(q.q.durationSec);
+        setSelectedChoice(data.answered ? (data.choiceIndex ?? null) : null);
+        setHasAnswered(data.answered);
+        setGameState('question');
+      } else if (data.state === 'reveal') {
+        setResumedMidGame(true);
+        setGameState('lobby');
       }
     });
 
-    socket.on(EVENTS.LOBBY_UPDATE, (playerList: Player[]) => {
-      setPlayers(playerList);
-    });
+    socket.on(EVENTS.LOBBY_UPDATE, (playerList: Player[]) => setPlayers(playerList));
 
     socket.on(EVENTS.GAME_QUESTION, (data: GameData) => {
-      setQuestionTransition(true);
-      // Reset live answer count for host
+      if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
+      setResumedMidGame(false);
       setAnswerCount(0);
-      setTimeout(() => {
-        setGameState('question');
-        setCurrentQuestion(data);
-        setSelectedChoice(null);
-        setHasAnswered(false);
-        setQuestionResult(null);
-        setRevealPhase('correct');
-        setTimeLeft(data.q.durationSec);
-        setTotalTime(data.q.durationSec);
-        setQuestionTransition(false);
-      }, 400);
+      setGameState('question');
+      setCurrentQuestion(data);
+      setSelectedChoice(null);
+      setHasAnswered(false);
+      setQuestionResult(null);
+      setRevealPhase('correct');
+      setTimeLeft(data.q.durationSec);
+      setTotalTime(data.q.durationSec);
     });
 
-    socket.on(EVENTS.GAME_ANSWER_COUNT, (count: number) => {
-      setAnswerCount(count);
-    });
+    socket.on(EVENTS.GAME_ANSWER_COUNT, (count: number) => setAnswerCount(count));
 
     socket.on(EVENTS.GAME_QUESTION_END, (result: QuestionResult) => {
       setQuestionResult(result);
@@ -222,38 +258,14 @@ const Game = () => {
       setGameState('reveal');
       setTimeLeft(0);
       setRevealPhase('correct');
-
-      // Phase 1: show correct answer + bars (2s)
-      // Phase 2: animate point gains (3s)
-      // Phase 3: show updated leaderboard (stays until next question starts)
-      revealTimerRef.current = setTimeout(() => {
-        setRevealPhase('scores');
-        // Build starting scores (pre-points) for animation
-        const preScores: Record<string, number> = {};
-        result.leaderboard.forEach(p => {
-          preScores[p.name] = p.score - p.pointsEarned;
-        });
-        setAnimatedScores(preScores);
-
-        // After a beat, animate scores counting up
-        setTimeout(() => {
-          const finalScores: Record<string, number> = {};
-          result.leaderboard.forEach(p => { finalScores[p.name] = p.score; });
-          setAnimatedScores(finalScores);
-        }, 300);
-
-        // Phase 3: leaderboard
-        revealTimerRef.current = setTimeout(() => {
-          setRevealPhase('leaderboard');
-        }, 2500);
-      }, 2000);
+      // Answer chart first, then the leaderboard until the next question arrives.
+      revealTimerRef.current = setTimeout(() => setRevealPhase('leaderboard'), 2800);
     });
 
     socket.on(EVENTS.GAME_RESULTS, (data: GameResultsPayload) => {
       setLeaderboard(data.leaderboard);
       setQuizTitle(data.quizTitle ?? '');
       setGameState('results');
-      // Host saves the result to Firestore
       if (isHostRef.current && user) {
         saveGameResult({
           hostUid: user.uid,
@@ -266,13 +278,10 @@ const Game = () => {
           if (id) setSavedResultId(id);
         });
       }
-      // Logged-in students save their own progress entry
+      // Logged-in students save their own progress, but only for their own row.
       if (!isHostRef.current && user) {
-        // Best-effort match: find the leaderboard entry whose name matches the user's display name
-        const displayName = user.displayName?.split(' ')[0] ?? user.email?.split('@')[0] ?? '';
-        const myEntry = data.leaderboard.find(
-          (p) => p.name.toLowerCase() === displayName.toLowerCase()
-        ) ?? data.leaderboard[0]; // fallback: first entry (likely the only player in solo games)
+        const myName = readMe(data.code)?.name ?? user.displayName?.split(' ')[0] ?? '';
+        const myEntry = data.leaderboard.find((p) => p.name.toLowerCase() === myName.toLowerCase());
         if (myEntry) {
           saveStudentProgress({
             uid: user.uid,
@@ -294,13 +303,8 @@ const Game = () => {
       setTimeout(() => setReconnectBanner(false), 4000);
     });
 
-    socket.on(EVENTS.GAME_ENDED, () => {
-      setGameState('ended');
-    });
-
-    socket.on(EVENTS.PLAYER_ANSWER_ACK, () => {
-      setHasAnswered(true);
-    });
+    socket.on(EVENTS.GAME_ENDED, () => setGameState('ended'));
+    socket.on(EVENTS.PLAYER_ANSWER_ACK, () => setHasAnswered(true));
 
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('host') === 'true') {
@@ -308,7 +312,10 @@ const Game = () => {
       setIsHost(true);
     }
 
+    // Fresh page load (refresh): reclaim our seat first, then ask for the lobby.
     if (code) {
+      if (getHostToken(code) && urlParams.get('host') === 'true') isHostRef.current = true;
+      if (socket.connected) reclaim();
       socket.emit(EVENTS.LOBBY_REQUEST, { code });
     }
 
@@ -327,14 +334,18 @@ const Game = () => {
       socket.off(EVENTS.HOST_AWAY);
       socket.off(EVENTS.HOST_BACK);
       socket.off('connect');
+      socket.off('disconnect');
+      socket.off(EVENTS.HOST_RECONNECT_FAILED);
+      socket.off(EVENTS.SESSION_RESUME_FAILED);
+      socket.off(EVENTS.PLAYER_STATE);
       socket.off(EVENTS.PLAYER_ANSWER_ACK);
       socket.off(EVENTS.PLAYER_RECONNECTED);
       if (timerRef.current) clearTimeout(timerRef.current);
       if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Countdown timer — stops while paused
+  // Countdown timer, stopped while paused
   useEffect(() => {
     if (gameState === 'question' && timeLeft > 0 && !isPaused) {
       timerRef.current = setTimeout(() => setTimeLeft((t) => t - 1), 1000);
@@ -347,107 +358,69 @@ const Game = () => {
   }
 
   function selectChoice(choiceIndex: number) {
-    if (isHost || hasAnswered || timeLeft <= 0 || gameState !== 'question') return;
+    if (isHost || hasAnswered || selectedChoice !== null || timeLeft <= 0 || gameState !== 'question' || isPaused) return;
     setSelectedChoice(choiceIndex);
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate?.(15);
     socket.emit(EVENTS.PLAYER_ANSWER, { code, choiceIndex });
   }
 
-  // ---------------------------------------------------------------------------
-  // Timer helpers
-  // ---------------------------------------------------------------------------
-
-  const timerPercent = totalTime > 0 ? (timeLeft / totalTime) * 100 : 0;
-  const timerColor = timeLeft > 10 ? 'var(--color-success)' : timeLeft > 5 ? 'var(--color-warning)' : 'var(--color-error)';
+  const fusePct = totalTime > 0 ? Math.max(0, Math.min(100, (timeLeft / totalTime) * 100)) : 0;
+  const myEntry = me ? leaderboard.find((p) => p.name.toLowerCase() === me.name.toLowerCase()) : undefined;
 
   // ---------------------------------------------------------------------------
-  // Choice state helpers
+  // Shared overlays
   // ---------------------------------------------------------------------------
 
-  function getChoiceState(index: number): 'default' | 'selected' | 'correct' | 'incorrect' | 'unselected' {
-    if (questionResult === null) {
-      return selectedChoice === index ? 'selected' : 'default';
-    }
-    if (index === questionResult.correctIndex) return 'correct';
-    if (selectedChoice === index) return 'incorrect';
-    return 'unselected';
-  }
+  const overlays = (
+    <>
+      {isPaused && (
+        <div className="g-interstitial" role="status" aria-live="polite">
+          <div className="st-sticker g-interstitial__card st-anim-slap">
+            <svg width="56" height="56" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="5" height="16" rx="2" fill="currentColor" /><rect x="14" y="4" width="5" height="16" rx="2" fill="currentColor" /></svg>
+            <div className="st-display g-interstitial__title">Paused</div>
+            <div className="st-muted">{isHost ? 'The timer is stopped. Resume when you are ready.' : 'Your host paused the game. Hang tight.'}</div>
+            {isHost && (
+              <button type="button" className="st-btn st-btn--ink" onClick={() => socket.emit(EVENTS.HOST_RESUME, { code })}>Resume</button>
+            )}
+          </div>
+        </div>
+      )}
+      {hostAway && !isPaused && !isHost && (
+        <div className="g-toast" role="status" aria-live="polite">
+          Your host lost connection. Waiting for them to come back<span className="st-dots"><span>.</span><span>.</span><span>.</span></span>
+        </div>
+      )}
+      {reconnectBanner && <div className="g-toast g-toast--good" role="status">You're back in. Nothing was lost.</div>}
+      {offline && (
+        <div className="g-toast" role="status" aria-live="polite">
+          Reconnecting<span className="st-dots"><span>.</span><span>.</span><span>.</span></span> your spot is saved
+        </div>
+      )}
+    </>
+  );
+
+  const fuse = (running: boolean) => (
+    <div className="g-fuse" role="timer" aria-label={`${timeLeft} seconds left`}>
+      <div className="g-fuse__burn" style={{ width: `${running ? fusePct : 0}%` }}>
+        {running && timeLeft > 0 && <span className="g-fuse__spark" aria-hidden="true" />}
+      </div>
+    </div>
+  );
 
   // ---------------------------------------------------------------------------
-  // Render helpers
+  // Game no longer exists (ended, or expired while we were away)
   // ---------------------------------------------------------------------------
 
-  function renderStreakBadge(streak: number) {
-    if (streak < 2) return null;
-    return <span className="streak-badge">{streak}x streak</span>;
-  }
-
-  function renderRankDelta(delta: number) {
-    if (delta === 0) return <span className="rank-delta rank-delta-same">--</span>;
-    if (delta > 0) return <span className="rank-delta rank-delta-up">+{delta}</span>;
-    return <span className="rank-delta rank-delta-down">{delta}</span>;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Ended / Results state — final podium
-  // ---------------------------------------------------------------------------
-
-  if (gameState === 'ended' || gameState === 'results') {
-    const top3 = leaderboard.slice(0, 3);
-    const rest = leaderboard.slice(3);
-    const podiumOrder = [top3[1], top3[0], top3[2]].filter(Boolean);
-
+  if (gameState === 'gone') {
     return (
-      <div className="game-page game-page-dark">
-        <div className="container">
-          <div className="podium-screen">
-            <h1 className="podium-title">{quizTitle ? `${quizTitle} — Final Results` : 'Final Results'}</h1>
-            <div className="podium-stage">
-              {podiumOrder.map((entry) => (
-                <div key={entry.rank} className={`podium-column podium-rank-${entry.rank}`}>
-                  <div className="podium-avatar">{entry.name.charAt(0).toUpperCase()}</div>
-                  <div className="podium-name">{entry.name}</div>
-                  <div className="podium-score">{entry.score.toLocaleString()} pts</div>
-                  <div className={`podium-block podium-block-${entry.rank}`}>
-                    <span className="podium-medal">
-                      {entry.rank === 1 ? '1st' : entry.rank === 2 ? '2nd' : '3rd'}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-            {rest.length > 0 && (
-              <div className="podium-rest">
-                {rest.map((entry) => (
-                  <div key={entry.rank} className="podium-rest-row">
-                    <span className="podium-rest-rank">#{entry.rank}</span>
-                    <span className="podium-rest-name">{entry.name}</span>
-                    <span className="podium-rest-score">{entry.score.toLocaleString()} pts</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            {teamsEnabled && teamLeaderboard.length > 0 && (
-              <div className="team-leaderboard">
-                <h2 className="team-leaderboard-title">🏆 Team Results</h2>
-                {teamLeaderboard.map((t) => (
-                  <div key={t.teamName} className={`team-leaderboard-row team-rank-${t.rank}`}>
-                    <span className="team-leaderboard-rank">#{t.rank}</span>
-                    <span className="team-leaderboard-name">{t.teamName}</span>
-                    <span className="team-leaderboard-score">{t.score.toLocaleString()} pts</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="podium-actions">
-              {savedResultId && (
-                <Button variant="secondary" size="lg" onClick={() => navigate(`/results/${savedResultId}`)}>
-                  View Full Report
-                </Button>
-              )}
-              <Button variant="primary" size="lg" onClick={() => navigate('/dashboard')}>
-                Back to Dashboard
-              </Button>
-            </div>
+      <div className="st-stage g-phone">
+        <div className="g-phone__inner g-center" style={{ justifyContent: 'center' }}>
+          <div className="st-sticker g-cta-card st-anim-slap">
+            <div className="st-display g-cta-card__title">This game has finished</div>
+            <div className="st-muted">It ended or timed out while you were away. Grab the new code from the big screen to jump into the next one.</div>
+            <button type="button" className="st-btn st-btn--ink st-btn--block" onClick={() => navigate(isHost ? '/dashboard' : '/join')}>
+              {isHost ? 'Back to my quizzes' : 'Join a game'}
+            </button>
           </div>
         </div>
       </div>
@@ -455,422 +428,416 @@ const Game = () => {
   }
 
   // ---------------------------------------------------------------------------
-  // Reveal state — fullscreen animated between-question screen
+  // Final results: podium (host) / placement card (player)
   // ---------------------------------------------------------------------------
 
-  if (gameState === 'reveal' && currentQuestion && questionResult) {
-    const totalAnswers = questionResult.answerCounts.reduce((a, b) => a + b, 0);
+  if (gameState === 'ended' || gameState === 'results') {
+    if (!isHost) {
+      const place = myEntry?.rank;
+      return (
+        <div className="st-stage g-phone">
+          <div className="g-phone__inner g-center">
+            <div className="st-tag g-tilt-r">Game over</div>
+            {myEntry ? (
+              <>
+                <div className="st-anim-slap"><Avatar kind={myEntry.avatar ?? me?.avatar} name={myEntry.name} size={170} /></div>
+                <div className="st-display g-final-place">You placed {ordinal(place!)}</div>
+                <div className="st-muted g-final-sub">of {leaderboard.length} {leaderboard.length === 1 ? 'player' : 'players'} · {myEntry.score.toLocaleString()} points</div>
+              </>
+            ) : (
+              <div className="st-display g-final-place">Thanks for playing!</div>
+            )}
+            <div className="g-spacer" />
+            <div className="st-sticker g-cta-card">
+              <div className="st-display g-cta-card__title">That was fun. Your turn?</div>
+              <div className="st-muted">Make your own quiz in a minute. Free, and your friends join just like you did.</div>
+              <button type="button" className="st-btn st-btn--ink st-btn--block" onClick={() => navigate('/register')}>Host your own</button>
+            </div>
+            <button type="button" className="st-btn st-btn--quiet st-btn--block" onClick={() => navigate('/join')}>Join another game</button>
+          </div>
+        </div>
+      );
+    }
+
+    const top3 = leaderboard.slice(0, 3);
+    const podium = [
+      top3[1] && { entry: top3[1], height: 210, color: 'var(--st-answer-2)', pod: 1.4, av: 1.9, size: 140 },
+      top3[0] && { entry: top3[0], height: 290, color: 'var(--st-lemon)', pod: 2.6, av: 3.2, size: 170 },
+      top3[2] && { entry: top3[2], height: 150, color: 'var(--st-answer-1)', pod: 0.3, av: 0.8, size: 130 },
+    ].filter(Boolean) as Array<{ entry: RankedPlayer; height: number; color: string; pod: number; av: number; size: number }>;
+    const rest = leaderboard.slice(3, 10);
 
     return (
-      <div className="game-page game-page-dark reveal-fullscreen">
-        <div className={`reveal-phase-wrapper reveal-phase-${revealPhase}`}>
-
-          {/* ---- Phase: correct answer ---- */}
-          {revealPhase === 'correct' && (
-            <div className="reveal-correct-phase">
-              <p className="reveal-phase-label">Question {(currentQuestion.index + 1)} of {currentQuestion.total}</p>
-              <div className="reveal-question-banner">{currentQuestion.q.text}</div>
-              <div className="reveal-choices-grid">
-                {currentQuestion.q.choices.map((choice, index) => {
-                  const count = questionResult.answerCounts[index] || 0;
-                  const pct = totalAnswers > 0 ? Math.round((count / totalAnswers) * 100) : 0;
-                  const isCorrect = index === questionResult.correctIndex;
-                  const color = CHOICE_COLORS[index % CHOICE_COLORS.length];
-                  return (
-                    <div
-                      key={index}
-                      className={`reveal-choice-card ${isCorrect ? 'reveal-choice-card-correct' : 'reveal-choice-card-wrong'}`}
-                      style={{ '--choice-color': color.base } as React.CSSProperties}
-                    >
-                      <div className="reveal-choice-card-header">
-                        <span className="reveal-choice-badge" style={{ background: color.base }}>{color.label}</span>
-                        <span className="reveal-choice-card-text">{choice}</span>
-                        {isCorrect && <span className="reveal-correct-checkmark">✓</span>}
-                      </div>
-                      <div className="reveal-bar-track">
-                        <div
-                          className="reveal-bar-fill"
-                          style={{ width: `${pct}%`, background: isCorrect ? '#48BB78' : color.base }}
-                        />
-                      </div>
-                      <div className="reveal-bar-label">{count} {count === 1 ? 'player' : 'players'} · {pct}%</div>
-                    </div>
-                  );
-                })}
+      <div className="st-stage g-host g-podium">
+        <div className="st-display g-podium__title">{quizTitle ? `${quizTitle}: the winner is…` : 'And the winner is…'}</div>
+        <div className="g-podium__stage">
+          {podium.map(({ entry, height, color, pod, av, size }) => (
+            <div key={entry.rank} className="g-podium__col">
+              <div className="g-podium__who g-anim-popup" style={{ animationDelay: `${av}s` }}>
+                <Avatar kind={entry.avatar} name={entry.name} size={size} decorative />
+                <div className="st-display g-podium__name">{entry.name}</div>
+                <div className="st-muted">{entry.score.toLocaleString()} pts</div>
+              </div>
+              <div className="g-podium__block g-anim-rise" style={{ height: `min(${height}px, ${Math.round(height / 9)}vh)`, background: color, animationDelay: `${pod}s` }}>
+                <span className="st-display">{entry.rank}</span>
               </div>
             </div>
+          ))}
+        </div>
+        {Array.from({ length: 36 }).map((_, i) => (
+          <span
+            key={i}
+            className="g-confetti"
+            aria-hidden="true"
+            style={{
+              left: `${(i * 37) % 100}%`,
+              animationDelay: `${3.4 + (i % 9) * 0.12}s`,
+              width: i % 3 === 0 ? 10 : 14,
+              height: i % 2 === 0 ? 22 : 12,
+              background: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+              borderRadius: i % 4 === 0 ? '50%' : 3,
+            }}
+          />
+        ))}
+        <div className="g-podium__footer">
+          {rest.length > 0 && (
+            <ol className="g-podium__rest" start={4}>
+              {rest.map((p) => (
+                <li key={p.rank} className="st-chip" style={{ background: 'var(--st-white)' }}>
+                  <Avatar kind={p.avatar} name={p.name} size={30} decorative />
+                  <span>{p.rank}. {p.name}</span>
+                </li>
+              ))}
+            </ol>
           )}
-
-          {/* ---- Phase: score gains (big numbers flying up) ---- */}
-          {revealPhase === 'scores' && (
-            <div className="reveal-scores-phase">
-              <p className="reveal-phase-label">Points Earned</p>
-              <div className="reveal-score-list">
-                {questionResult.leaderboard.map((entry, i) => (
-                  <div
-                    key={entry.name}
-                    className="reveal-score-row"
-                    style={{ animationDelay: `${i * 80}ms` }}
-                  >
-                    <span className="reveal-score-rank">#{entry.rank}</span>
-                    <span className="reveal-score-name">{entry.name}</span>
-                    {entry.pointsEarned > 0 && (
-                      <span className="reveal-score-points-earned points-pop">
-                        +{entry.pointsEarned}
-                      </span>
-                    )}
-                    {entry.streak >= 2 && renderStreakBadge(entry.streak)}
-                    <span className="reveal-score-total">
-                      {(animatedScores[entry.name] ?? entry.score).toLocaleString()}
-                    </span>
-                  </div>
-                ))}
-              </div>
+          {teamsEnabled && teamLeaderboard.length > 0 && (
+            <div className="g-podium__teams">
+              {teamLeaderboard.map((t) => (
+                <span key={t.teamName} className="st-tag">{t.rank}. {t.teamName} · {t.score.toLocaleString()}</span>
+              ))}
             </div>
           )}
-
-          {/* ---- Phase: leaderboard with rank movement ---- */}
-          {revealPhase === 'leaderboard' && (
-            <div className="reveal-leaderboard-phase">
-              <p className="reveal-phase-label">Leaderboard</p>
-              <div className="reveal-lb-list">
-                {leaderboard.slice(0, 8).map((entry, i) => (
-                  <div
-                    key={entry.name}
-                    className={`reveal-lb-row ${entry.rank === 1 ? 'reveal-lb-first' : ''}`}
-                    style={{ animationDelay: `${i * 60}ms` }}
-                  >
-                    <span className={`reveal-lb-rank ${entry.rankDelta > 0 ? 'rank-moved-up' : entry.rankDelta < 0 ? 'rank-moved-down' : ''}`}>
-                      #{entry.rank}
-                    </span>
-                    <span className="reveal-lb-name">{entry.name}</span>
-                    {renderStreakBadge(entry.streak)}
-                    {renderRankDelta(entry.rankDelta)}
-                    <span className="reveal-lb-score">{entry.score.toLocaleString()}</span>
-                  </div>
-                ))}
-              </div>
-              <p className="reveal-next-hint">Next question coming up...</p>
-            </div>
-          )}
-
+          <div className="g-podium__actions">
+            {savedResultId && (
+              <button type="button" className="st-btn st-btn--lemon" onClick={() => navigate(`/results/${savedResultId}`)}>See the report</button>
+            )}
+            <button type="button" className="st-btn st-btn--ink" onClick={() => navigate('/dashboard')}>Back to my quizzes</button>
+          </div>
         </div>
       </div>
     );
   }
 
   // ---------------------------------------------------------------------------
-  // Question state — HOST view (spectator: see question + live answer count + choices displayed)
+  // Reveal
+  // ---------------------------------------------------------------------------
+
+  if (gameState === 'reveal' && currentQuestion && questionResult) {
+    if (!isHost) {
+      const picked = selectedChoice;
+      const correct = picked !== null && picked === questionResult.correctIndex;
+      const missed = picked === null;
+      const entry = me ? questionResult.leaderboard.find((p) => p.name.toLowerCase() === me.name.toLowerCase()) : undefined;
+      const above = entry ? questionResult.leaderboard.find((p) => p.rank === entry.rank - 1) : undefined;
+      const right = answerStyle(questionResult.correctIndex);
+      return (
+        <div className={`st-stage g-phone g-result ${correct ? 'is-correct' : 'is-wrong'}`}>
+          <div className="g-phone__inner g-center">
+            <div className="g-result__burst st-anim-slap">
+              <span className="g-result__icon">{correct ? <CheckIcon size={64} /> : <CrossIcon size={56} />}</span>
+            </div>
+            <div className="st-display g-result__title">{correct ? 'Correct!' : missed ? 'Out of time' : 'Not quite'}</div>
+            {correct && entry && <div className="st-display g-result__points st-anim-slap" style={{ animationDelay: '.25s' }}>+{entry.pointsEarned.toLocaleString()}</div>}
+            {!correct && (
+              <div className="st-sticker g-result__answer">
+                <AnswerShape index={questionResult.correctIndex} size={34} fill={right.color} />
+                <span>The answer was <strong>{currentQuestion.q.choices[questionResult.correctIndex]}</strong></span>
+              </div>
+            )}
+            {correct && entry && entry.streak >= 2 && (
+              <div className="st-tag g-tilt-r g-result__streak">{entry.streak} in a row</div>
+            )}
+            <div className="g-spacer" />
+            {entry && (
+              <div className="st-sticker g-result__rank">
+                <div className="st-display g-result__rank-big">You're {ordinal(entry.rank)}</div>
+                <div className="g-result__rank-sub">
+                  {entry.rankDelta !== 0 && (
+                    <span className={`g-delta ${entry.rankDelta > 0 ? 'is-up' : 'is-down'}`}>
+                      <ArrowIcon up={entry.rankDelta > 0} /> {Math.abs(entry.rankDelta)}
+                    </span>
+                  )}
+                  {above ? `${(above.score - entry.score).toLocaleString()} behind ${above.name}` : 'In the lead!'}
+                </div>
+              </div>
+            )}
+          </div>
+          {overlays}
+        </div>
+      );
+    }
+
+    const total = questionResult.answerCounts.reduce((a, b) => a + b, 0);
+    const correctCount = questionResult.answerCounts[questionResult.correctIndex] ?? 0;
+
+    if (revealPhase === 'leaderboard') {
+      return (
+        <div className="st-stage g-host g-board">
+          <div className="g-board__head">
+            <div className="st-display g-board__title">Leaderboard</div>
+            <div className="st-tag g-tilt-r">after {currentQuestion.index + 1} of {currentQuestion.total}</div>
+          </div>
+          <ol className="g-board__list">
+            {leaderboard.slice(0, 5).map((p, i) => (
+              <li key={p.name} className="st-anim-row" style={{ animationDelay: `${0.1 + (4 - i) * 0.12}s` }}>
+                <div className={`g-board__row ${p.rankDelta > 0 ? 'st-anim-hop' : ''} ${p.rank === 1 ? 'is-first' : ''}`}>
+                  <span className="st-display g-board__rank">{p.rank}</span>
+                  <Avatar kind={p.avatar} name={p.name} size={68} decorative />
+                  <span className="st-display g-board__name">{p.name}</span>
+                  {p.streak >= 2 && <span className="st-tag g-board__streak">{p.streak} streak</span>}
+                  {p.rankDelta !== 0 && (
+                    <span className={`g-delta ${p.rankDelta > 0 ? 'is-up' : 'is-down'}`}>
+                      <ArrowIcon up={p.rankDelta > 0} /> {Math.abs(p.rankDelta)}
+                    </span>
+                  )}
+                  <span className="st-display g-board__score">{p.score.toLocaleString()}</span>
+                </div>
+              </li>
+            ))}
+          </ol>
+          <p className="st-muted g-board__hint">Next question coming up<span className="st-dots"><span>.</span><span>.</span><span>.</span></span></p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="st-stage g-host g-q">
+        {fuse(false)}
+        <div className="g-q__head">
+          <span className="st-tag g-tilt-l">{currentQuestion.index + 1} / {currentQuestion.total}</span>
+          <h1 className="st-display g-q__text">{currentQuestion.q.text}</h1>
+          <span className="st-muted g-q__status">{correctCount} of {total} got it</span>
+        </div>
+        <div className="g-cols" style={{ gridTemplateColumns: `repeat(${currentQuestion.q.choices.length}, minmax(0, 1fr))` }}>
+          {currentQuestion.q.choices.map((choice, i) => {
+            const count = questionResult.answerCounts[i] || 0;
+            const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+            const isCorrect = i === questionResult.correctIndex;
+            const s = answerStyle(i);
+            return (
+              <div key={i} className={`g-col is-revealed ${isCorrect ? 'is-correct' : 'is-dim'}`}>
+                <div className="g-col__fill g-anim-rise" style={{ height: `${pct}%`, background: s.color }} />
+                <AnswerShape index={i} size={84} fill="var(--st-ink)" />
+                <span className="st-display g-col__count">{count}</span>
+                <span className="st-display g-col__label">{choice}</span>
+                {isCorrect && (
+                  <span className="g-col__stamp"><span className="st-anim-slap" style={{ animationDelay: '.8s' }}><CheckIcon size={26} /> Correct!</span></span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Question: host (big screen)
   // ---------------------------------------------------------------------------
 
   if (gameState === 'question' && currentQuestion && isHost) {
     const playerCount = players.length;
-    const pct = playerCount > 0 ? Math.round((answerCount / playerCount) * 100) : 0;
-
     return (
-      <div className="game-page game-page-dark">
-        <div className="container game-container">
-          <div className={`game-question-screen ${questionTransition ? 'game-transition-out' : 'game-transition-in'}`}>
-
-            <div className="question-top-bar">
-              <span className="question-progress" aria-label={`Question ${currentQuestion.index + 1} of ${currentQuestion.total}`}>
-                Q{currentQuestion.index + 1} / {currentQuestion.total}
-              </span>
-              <div className="timer-container" role="timer" aria-label={`${timeLeft} seconds remaining`} aria-live="off">
-                <svg className="timer-ring" viewBox="0 0 44 44" aria-hidden="true">
-                  <circle className="timer-ring-bg" cx="22" cy="22" r="18" />
-                  <circle
-                    className="timer-ring-fill"
-                    cx="22" cy="22" r="18"
-                    style={{ stroke: timerColor, strokeDashoffset: `${(1 - timerPercent / 100) * 113}px` }}
-                  />
-                </svg>
-                <span className={`timer-number ${timeLeft <= 5 ? 'timer-urgent' : ''}`} style={{ color: timerColor }} aria-hidden="true">
-                  {timeLeft}
-                </span>
+      <div className="st-stage g-host g-q">
+        {fuse(!isPaused)}
+        <div className="g-q__head">
+          <span className="st-tag g-tilt-l">{currentQuestion.index + 1} / {currentQuestion.total}</span>
+          <h1 className="st-display g-q__text">{currentQuestion.q.text}</h1>
+          <span className="g-q__clock st-display" aria-hidden="true">{timeLeft}</span>
+        </div>
+        <div className="g-cols" style={{ gridTemplateColumns: `repeat(${currentQuestion.q.choices.length}, minmax(0, 1fr))` }}>
+          {currentQuestion.q.choices.map((choice, i) => {
+            const s = answerStyle(i);
+            return (
+              <div key={i} className="g-col st-anim-peel" style={{ background: s.color, color: s.ink, animationDelay: `${i * 0.08}s` }}>
+                <AnswerShape index={i} size={96} />
+                <span className="st-display g-col__label">{choice}</span>
               </div>
-            </div>
-
-            <div className="question-text-box">
-              <h2 className="question-text">{currentQuestion.q.text}</h2>
-            </div>
-
-            {/* Host sees choices as display tiles, not buttons */}
-            <div className="choices-grid host-choices" role="list" aria-label="Answer choices">
-              {currentQuestion.q.choices.map((choice, index) => {
-                const color = CHOICE_COLORS[index % CHOICE_COLORS.length];
-                return (
-                  <div
-                    key={index}
-                    className="game-choice game-choice-host"
-                    style={{ borderColor: color.base }}
-                    role="listitem"
-                  >
-                    <span className="choice-letter" style={{ background: color.base }} aria-hidden="true">{color.label}</span>
-                    <span className="choice-text">{choice}</span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Live answer progress bar */}
-            <div className="host-answer-tracker" aria-live="polite" aria-atomic="true">
-              <div className="hat-bar-row">
-                <span className="hat-label">{answerCount} / {playerCount} answered</span>
-                <span className="hat-pct">{pct}%</span>
-              </div>
-              <div className="hat-bar-track" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Players answered">
-                <div className="hat-bar-fill" style={{ width: `${pct}%` }} />
-              </div>
-            </div>
-
-            {/* Host controls */}
-            <div className="host-controls">
-              {/* Pause / Resume */}
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => socket.emit(isPaused ? EVENTS.HOST_RESUME : EVENTS.HOST_PAUSE, { code })}
-              >
-                {isPaused ? '▶ Resume' : '⏸ Pause'}
-              </Button>
-              {/* Add 30s */}
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => socket.emit(EVENTS.HOST_EXTEND_TIME, { code, extraSeconds: 30 })}
-              >
-                +30s
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => socket.emit(EVENTS.HOST_SKIP, { code })}
-              >
-                Skip
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => {
-                  if (window.confirm('End game now and show final scores?')) {
-                    socket.emit(EVENTS.HOST_END_GAME, { code });
-                  }
-                }}
-              >
-                End Game
-              </Button>
-            </div>
-
-            {/* Pause overlay shown to host */}
-            {isPaused && (
-              <div className="pause-overlay">
-                <span className="pause-overlay-icon">⏸</span>
-                <span className="pause-overlay-text">Game Paused</span>
-              </div>
-            )}
-
+            );
+          })}
+        </div>
+        <div className="g-host__bar">
+          <span className="st-muted g-host__answered" aria-live="polite"><strong>{answerCount}</strong> of {playerCount} answered</span>
+          <div className="g-host__controls">
+            <button type="button" className="st-btn st-btn--quiet" onClick={() => socket.emit(isPaused ? EVENTS.HOST_RESUME : EVENTS.HOST_PAUSE, { code })}>{isPaused ? 'Resume' : 'Pause'}</button>
+            <button type="button" className="st-btn st-btn--quiet" onClick={() => socket.emit(EVENTS.HOST_EXTEND_TIME, { code, extraSeconds: 15 })}>+15 s</button>
+            <button type="button" className="st-btn st-btn--quiet" onClick={() => socket.emit(EVENTS.HOST_SKIP, { code })}>Reveal now</button>
+            <button
+              type="button"
+              className="st-btn st-btn--quiet"
+              onClick={() => { if (window.confirm('End the game now and show final scores?')) socket.emit(EVENTS.HOST_END_GAME, { code }); }}
+            >
+              End game
+            </button>
           </div>
         </div>
+        {overlays}
       </div>
     );
   }
 
   // ---------------------------------------------------------------------------
-  // Question state — PLAYER view
+  // Question: player (phone)
   // ---------------------------------------------------------------------------
 
   if (gameState === 'question' && currentQuestion) {
+    const locked = selectedChoice !== null;
+    const timeUp = timeLeft <= 0 && !locked;
     return (
-      <div className="game-page game-page-dark">
-        <div className="container game-container">
-          <div className={`game-question-screen ${questionTransition ? 'game-transition-out' : 'game-transition-in'}`}>
-
-            <div className="question-top-bar">
-              <span className="question-progress" aria-label={`Question ${currentQuestion.index + 1} of ${currentQuestion.total}`}>
-                {currentQuestion.index + 1} / {currentQuestion.total}
-              </span>
-              <div className="timer-container" role="timer" aria-label={`${timeLeft} seconds remaining`} aria-live="off">
-                <svg className="timer-ring" viewBox="0 0 44 44" aria-hidden="true">
-                  <circle className="timer-ring-bg" cx="22" cy="22" r="18" />
-                  <circle
-                    className="timer-ring-fill"
-                    cx="22" cy="22" r="18"
-                    style={{ stroke: timerColor, strokeDashoffset: `${(1 - timerPercent / 100) * 113}px` }}
-                  />
-                </svg>
-                <span className={`timer-number ${timeLeft <= 5 ? 'timer-urgent' : ''}`} style={{ color: timerColor }} aria-hidden="true">
-                  {timeLeft}
-                </span>
-              </div>
-            </div>
-
-            <div className="question-text-box">
-              <h2 className="question-text">{currentQuestion.q.text}</h2>
-            </div>
-
-            <div className="choices-grid" role="group" aria-label="Answer choices">
-              {currentQuestion.q.choices.map((choice, index) => {
-                const color = CHOICE_COLORS[index % CHOICE_COLORS.length];
-                const state = getChoiceState(index);
-                return (
-                  <button
-                    key={index}
-                    className={`game-choice game-choice-${state}`}
-                    style={{
-                      borderColor: state === 'default' ? color.base : undefined,
-                      background: state === 'selected' ? color.light : undefined,
-                    }}
-                    onClick={() => selectChoice(index)}
-                    disabled={hasAnswered || timeLeft <= 0}
-                    aria-pressed={state === 'selected'}
-                    aria-label={`${color.label}: ${choice}`}
-                  >
-                    <span className="choice-letter" style={{ background: color.base }} aria-hidden="true">{color.label}</span>
-                    <span className="choice-text">{choice}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {hasAnswered && (
-              <div className="answer-submitted-banner" role="status" aria-live="polite">
-                Answer locked in — waiting for results...
-              </div>
-            )}
-            {timeLeft <= 0 && !hasAnswered && (
-              <div className="time-up-banner" role="alert">Time is up!</div>
-            )}
-            {/* Player pause overlay */}
-            {isPaused && (
-              <div className="pause-overlay" role="status" aria-live="polite">
-                <span className="pause-overlay-icon">⏸</span>
-                <span className="pause-overlay-text">Host paused the game</span>
-              </div>
-            )}
-            {/* Host-away banner */}
-            {hostAway && !isPaused && (
-              <div className="host-away-banner" role="status" aria-live="polite">
-                Host disconnected — waiting for them to return...
-              </div>
-            )}
-          </div>
+      <div className="st-stage g-phone g-pq">
+        {fuse(!isPaused)}
+        <div className="g-pq__meta st-muted">
+          <span>{currentQuestion.index + 1} of {currentQuestion.total}</span>
+          <span>{timeLeft}s</span>
         </div>
+        <h1 className="st-display g-pq__text">{currentQuestion.q.text}</h1>
+        <div className="g-pq__grid" role="group" aria-label="Answer choices">
+          {currentQuestion.q.choices.map((choice, i) => {
+            const s = answerStyle(i);
+            const isPicked = selectedChoice === i;
+            return (
+              <div key={i} className="g-pq__cell" style={{ transform: `rotate(${i % 2 === 0 ? -1.5 : 1.5}deg)` }}>
+                <button
+                  type="button"
+                  className={`g-tile st-anim-peel ${isPicked ? 'st-anim-squish' : ''} ${locked && !isPicked ? 'is-faded' : ''}`}
+                  style={{ background: s.color, color: s.ink, animationDelay: isPicked ? undefined : `${i * 0.07}s` }}
+                  onClick={() => selectChoice(i)}
+                  disabled={locked || timeLeft <= 0 || isPaused}
+                  aria-pressed={isPicked}
+                  aria-label={`${s.letter}: ${choice}`}
+                >
+                  <AnswerShape index={i} size={58} />
+                  <span className="st-display g-tile__label">{choice}</span>
+                  {isPicked && <span className="g-tile__locked st-anim-slap">{hasAnswered ? 'LOCKED' : 'Sending…'}</span>}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        <p className="st-muted g-pq__hint" role="status" aria-live="polite">
+          {timeUp ? "Time's up!" : locked ? 'Locked in. Eyes on the big screen.' : 'Tap your answer'}
+        </p>
+        {overlays}
       </div>
     );
   }
 
   // ---------------------------------------------------------------------------
-  // Lobby state
+  // Lobby: player (phone)
   // ---------------------------------------------------------------------------
 
-  return (
-    <div className="game-page">
-      <div className="container game-container">
-        {reconnectBanner && (
-          <div className="reconnect-banner">Connection restored — welcome back!</div>
-        )}
-        <Card variant="elevated" padding="lg" className="game-card game-card-wide">
-          <h2 className="game-heading">Game Lobby</h2>
-          {isHost && <div className="host-badge">You are the Host</div>}
-
-          <div className="lobby-layout">
-            {/* ---- Left: QR + code ---- */}
-            <div className="lobby-join-panel">
-              <p className="lobby-join-panel-label">Scan to join</p>
-              <div className="lobby-qr-wrapper">
-                <QRCodeSVG value={joinUrl} size={180} bgColor="#ffffff" fgColor="#1a0a3e" level="M" />
-              </div>
-              <p className="lobby-or">or go to</p>
-              <p className="lobby-join-domain">
-                {typeof window !== 'undefined' ? window.location.origin : ''}/join
-              </p>
-              <div className="game-code-display">
-                <span className="game-code-label">Game Code</span>
-                <span className="game-code-value">{code}</span>
-              </div>
-            </div>
-
-            {/* ---- Right: player list + actions ---- */}
-            <div className="lobby-players-panel">
-              <div className="leaderboard">
-                <h3 className="leaderboard-title">Players ({players.length})</h3>
-                {players.length === 0 ? (
-                  <p className="lobby-waiting">Waiting for players to join...</p>
-                ) : (
-                  players.map((player) => (
-                    <div key={player.id} className="leaderboard-row">
-                      <span className="leaderboard-name">
-                        {player.name}
-                        {teamsEnabled && player.teamName && (
-                          <span className="team-badge">{player.teamName}</span>
-                        )}
-                      </span>
-                      <span className="leaderboard-score">{player.score} pts</span>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {isHost && (
-                <div className="game-actions">
-                  {/* Team setup */}
-                  <div className="team-setup-row">
-                    <input
-                      className="team-setup-input"
-                      placeholder="Team names (e.g. Red, Blue)"
-                      value={teamSetupInput}
-                      onChange={(e) => setTeamSetupInput(e.target.value)}
-                    />
-                    <button
-                      className="team-setup-btn"
-                      onClick={() => {
-                        const names = teamSetupInput.split(',').map((s) => s.trim()).filter(Boolean);
-                        if (names.length >= 2) socket.emit('host:set-teams', { code, teamNames: names });
-                      }}
-                      disabled={teamSetupInput.split(',').filter((s) => s.trim()).length < 2}
-                    >
-                      {teamsEnabled ? 'Update Teams' : 'Enable Teams'}
-                    </button>
-                  </div>
-                  {teamsEnabled && (
-                    <p className="team-active-notice">
-                      ✅ Teams enabled: {teamNames.join(', ')}
-                    </p>
-                  )}
-                  <Button
-                    variant="primary"
-                    size="lg"
-                    fullWidth
-                    onClick={startGame}
-                    disabled={players.length === 0}
-                  >
-                    {players.length === 0
-                      ? 'Waiting for Players...'
-                      : `Start Quiz (${players.length} player${players.length !== 1 ? 's' : ''})`}
-                  </Button>
-                  {players.length === 0 && (
-                    <p className="game-actions-hint">At least 1 player must join before starting.</p>
-                  )}
-                </div>
-              )}
-
-              {!isHost && (
-                <>
-                  {myTeamName && (
-                    <div className="my-team-banner">
-                      Your team: <strong>{myTeamName}</strong>
-                    </div>
-                  )}
-                  <p className="lobby-waiting" style={{ marginTop: '1.5rem' }}>
-                    Waiting for the host to start the quiz...
-                  </p>
-                </>
-              )}
-            </div>
+  if (!isHost) {
+    const mine = me ? players.find((p) => p.name.toLowerCase() === me.name.toLowerCase()) : undefined;
+    const others = players.filter((p) => p !== mine).slice(0, 10);
+    return (
+      <div className="st-stage g-phone g-plobby">
+        {others.map((p, i) => (
+          <div key={p.id} className="g-plobby__other" style={{ left: `${i % 2 === 0 ? 4 + (i * 3) % 14 : 52 + (i * 5) % 18}%`, top: `${i < 5 ? 4 + i * 6 : 74 + (i - 5) * 5}%`, transform: `rotate(${STICKER_TILTS[i % STICKER_TILTS.length]}deg)` }}>
+            <span className="st-chip st-anim-slap" style={{ background: 'var(--st-white)', animationDelay: `${i * 0.08}s` }}>
+              <Avatar kind={p.avatar} name={p.name} size={28} decorative />{p.name}
+            </span>
           </div>
-        </Card>
+        ))}
+        <div className="g-phone__inner g-center g-plobby__me">
+          <div style={{ transform: 'rotate(-5deg)' }}>
+            <div className="st-anim-slap"><Avatar kind={mine?.avatar ?? me?.avatar} name={me?.name ?? ''} size={180} /></div>
+          </div>
+          <div className="st-display g-plobby__title">{resumedMidGame ? "You're back in!" : "You're stuck in!"}</div>
+          {me && <div className="st-display g-plobby__name">{me.name}</div>}
+          {myTeamName && <div className="st-tag">Team {myTeamName}</div>}
+          <p className="st-muted g-plobby__hint">
+            {resumedMidGame ? 'Your score is safe. The next question is on its way' : 'Find your sticker on the big screen. The game starts soon'}<span className="st-dots"><span>.</span><span>.</span><span>.</span></span>
+          </p>
+        </div>
+        {overlays}
       </div>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Lobby: host (big screen sticker wall)
+  // ---------------------------------------------------------------------------
+
+  const teamCount = teamSetupInput.split(',').filter((s) => s.trim()).length;
+  return (
+    <div className="st-stage g-host g-lobby">
+      <header className="g-lobby__top">
+        <span className="st-display g-lobby__brand">PopPop</span>
+        <span className="st-muted">{quizTitle || 'Get ready'}</span>
+      </header>
+
+      <section className="g-lobby__join" aria-label="How to join">
+        <div className="st-display g-lobby__how">Go to <span className="g-lobby__url">{joinHost}/j</span> and stick in</div>
+        <div className="g-lobby__codes">
+          <div className="g-lobby__code" aria-label={`Game code ${code}`}>{code}</div>
+          <div className="st-sticker g-lobby__qr" style={{ transform: 'rotate(3deg)' }}>
+            <QRCodeSVG value={joinUrl} size={168} bgColor="#ffffff" fgColor="#1B1033" level="M" />
+          </div>
+        </div>
+        <div className="g-lobby__count">
+          <span className="st-display g-lobby__count-num">{players.length}</span>
+          <span className="g-lobby__count-label">{players.length === 1 ? 'sticker on the wall' : 'stickers on the wall'}</span>
+        </div>
+      </section>
+
+      <section className="g-lobby__wall" aria-label="Players">
+        {players.length === 0 && <p className="st-muted g-lobby__empty">Players will pop up here as they join.</p>}
+        {players.map((p, i) => (
+          <div key={p.id} style={{ transform: `rotate(${STICKER_TILTS[i % STICKER_TILTS.length]}deg)` }}>
+            <span className="st-chip st-anim-slap g-lobby__chip" style={{ background: CHIP_COLORS[i % CHIP_COLORS.length] }}>
+              <Avatar kind={p.avatar} name={p.name} size={40} decorative />
+              {p.name}
+              {teamsEnabled && p.teamName && <span className="g-lobby__team">{p.teamName}</span>}
+            </span>
+          </div>
+        ))}
+      </section>
+
+      <footer className="g-host__bar">
+        <div className="g-lobby__teams">
+          {showTeams ? (
+            <>
+              <label className="st-sr-only" htmlFor="team-names">Team names, separated by commas</label>
+              <input
+                id="team-names"
+                className="st-input g-lobby__team-input"
+                placeholder="Team names: Red, Blue"
+                value={teamSetupInput}
+                onChange={(e) => setTeamSetupInput(e.target.value)}
+              />
+              <button
+                type="button"
+                className="st-btn st-btn--quiet"
+                disabled={teamCount < 2}
+                onClick={() => {
+                  const names = teamSetupInput.split(',').map((s) => s.trim()).filter(Boolean);
+                  if (names.length >= 2) socket.emit('host:set-teams', { code, teamNames: names });
+                }}
+              >
+                {teamsEnabled ? 'Update teams' : 'Use teams'}
+              </button>
+            </>
+          ) : (
+            <button type="button" className="st-btn st-btn--quiet" onClick={() => setShowTeams(true)}>
+              {teamsEnabled ? `Teams: ${teamNames.join(', ')}` : 'Play in teams'}
+            </button>
+          )}
+        </div>
+        <button type="button" className="st-btn st-btn--ink st-btn--lg" onClick={startGame} disabled={players.length === 0}>
+          {players.length === 0 ? 'Waiting for players…' : 'Start game'}
+        </button>
+      </footer>
+      {overlays}
     </div>
   );
 };

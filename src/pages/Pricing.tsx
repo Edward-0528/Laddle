@@ -38,7 +38,7 @@ const Pricing: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      await startProCheckout(user.uid, user.email || '');
+      await startProCheckout();
     } catch (err: any) {
       setError(err.message || 'Something went wrong. Please try again.');
       setLoading(false);

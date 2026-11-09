@@ -51,7 +51,8 @@ function App() {
   const { user, signOut } = useAuth();
   const location = useLocation();
 
-  const isGameRoute = location.pathname.startsWith('/game/');
+  // Game and join screens are full-screen: no marketing navbar or footer
+  const isGameRoute = /^\/(game|join|j)(\/|$)/.test(location.pathname);
 
   const firstName = user?.displayName?.split(' ')[0] ?? user?.email?.split('@')[0] ?? '';
 
@@ -80,6 +81,8 @@ function App() {
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
               <Route path="/join" element={<JoinGame />} />
+              <Route path="/join/:code" element={<JoinGame />} />
+              <Route path="/j/:code" element={<JoinGame />} />
               <Route path="/game/:code" element={<Game />} />
               <Route path="/library" element={<Library />} />
               <Route path="/demo" element={<Demo />} />

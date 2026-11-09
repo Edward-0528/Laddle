@@ -1,47 +1,111 @@
 rules_version = '2';
+// ---------------------------------------------------------------------------
+// Ladle Firestore rules
+// Default: deny. Every collection the app uses is listed explicitly.
+// Plan / billing data lives in `entitlements`, which only the server (Admin
+// SDK, which bypasses these rules) can write.
+// ---------------------------------------------------------------------------
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function signedIn() { return request.auth != null; }
+    function isUser(uid) { return signedIn() && request.auth.uid == uid; }
+    function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    function isSystemTemplate(d) { return d.isTemplate == true && d.createdBy == 'SYSTEM'; }
+
     // -----------------------------------------------------------------------
-    // quizzes collection
+    // quizzes
+    // Reads (get AND list) are allowed only for: the owner, public marketplace
+    // quizzes, and the official SYSTEM library. Queries must filter on one of
+    // those fields, so nobody can download everyone's private answer keys.
     // -----------------------------------------------------------------------
     match /quizzes/{quizId} {
+      allow read: if isSystemTemplate(resource.data)
+                  || resource.data.isPublic == true
+                  || (signedIn() && resource.data.createdBy == request.auth.uid);
 
-      // LIST queries for library templates — anyone (including unauthenticated).
-      // Firestore evaluates list rules at collection level (no resource.data),
-      // so we need a broad allow list here and rely on query constraints
-      // (isTemplate==true, createdBy=='SYSTEM') to scope results server-side.
-      allow list: if true;
-
-      // GET (single document read) — public for SYSTEM templates,
-      // private for user-owned quizzes.
-      allow get: if resource.data.isTemplate == true
-                    && resource.data.createdBy == 'SYSTEM';
-
-      allow get: if request.auth != null
-                    && resource.data.createdBy == request.auth.uid;
-
-      // CREATE — any signed-in user can create their own quizzes (forks).
-      allow create: if request.auth != null
+      // Owners create their own, non-template quizzes with no fake rating.
+      allow create: if signedIn()
                     && request.resource.data.createdBy == request.auth.uid
-                    && request.resource.data.isTemplate == false;
+                    && request.resource.data.isTemplate == false
+                    && !('rating' in request.resource.data && request.resource.data.rating > 0);
 
-      // Seed CREATE — any signed-in user can write SYSTEM templates.
-      // This allows the in-browser seedLibrary() call to work.
-      allow create: if request.auth != null
-                    && request.resource.data.createdBy == 'SYSTEM'
-                    && request.resource.data.isTemplate == true;
+      // Owners edit content, but can never turn a quiz into a SYSTEM template,
+      // hand it to someone else, or set its own rating / counters.
+      allow update: if signedIn()
+                    && resource.data.createdBy == request.auth.uid
+                    && !changed().hasAny(['createdBy', 'isTemplate', 'rating', 'forkCount', 'upvotes', 'stats']);
 
-      // UPDATE / DELETE — users can only modify their own quizzes.
-      allow update, delete: if request.auth != null
-                             && resource.data.createdBy == request.auth.uid;
+      allow delete: if signedIn() && resource.data.createdBy == request.auth.uid;
 
-      // SYSTEM template stat increment (used by forkQuizToUser counter).
-      allow update: if request.auth != null
-                    && resource.data.createdBy == 'SYSTEM'
-                    && resource.data.isTemplate == true
-                    && request.resource.data.diff(resource.data).affectedKeys()
-                         .hasOnly(['stats']);
+      // Anyone signed in may bump the public counters on a public quiz or a
+      // library template by exactly one.
+      allow update: if signedIn()
+                    && (resource.data.isPublic == true || isSystemTemplate(resource.data))
+                    && changed().hasOnly(['forkCount', 'upvotes', 'stats']);
+    }
+
+    // -----------------------------------------------------------------------
+    // users/{uid}: profile + branding. Billing fields are off limits.
+    // -----------------------------------------------------------------------
+    match /users/{uid} {
+      allow read: if isUser(uid);
+      allow create: if isUser(uid)
+                    && !request.resource.data.keys().hasAny(['plan', 'aiCreditsUsed', 'stripeCustomerId']);
+      allow update: if isUser(uid)
+                    && !changed().hasAny(['plan', 'aiCreditsUsed', 'stripeCustomerId']);
+      allow delete: if false;
+    }
+
+    // Server-written plan / quota record. Users can see their own.
+    match /entitlements/{uid} {
+      allow read: if isUser(uid);
+      allow write: if false;
+    }
+
+    // -----------------------------------------------------------------------
+    // gameResults: saved by the host after a live game, read by that host.
+    // -----------------------------------------------------------------------
+    match /gameResults/{id} {
+      allow create: if signedIn() && request.resource.data.hostUid == request.auth.uid;
+      allow read, delete: if signedIn() && resource.data.hostUid == request.auth.uid;
+      allow update: if false;
+    }
+
+    // -----------------------------------------------------------------------
+    // studentProgress/{uid}/entries: a student's own history only.
+    // -----------------------------------------------------------------------
+    match /studentProgress/{uid}/entries/{entryId} {
+      allow read, create: if isUser(uid);
+      allow update, delete: if false;
+    }
+
+    // -----------------------------------------------------------------------
+    // assignments (homework). Students without accounts open them by code,
+    // so reads stay open for now; grading should move server-side so answer
+    // keys stop shipping to the browser (tracked in docs/EXECUTION_PLAN.md).
+    // -----------------------------------------------------------------------
+    match /assignments/{id} {
+      allow read: if true;
+      allow create: if signedIn() && request.resource.data.hostUid == request.auth.uid;
+      allow update: if signedIn() && resource.data.hostUid == request.auth.uid
+                    && request.resource.data.hostUid == request.auth.uid;
+      allow delete: if signedIn() && resource.data.hostUid == request.auth.uid;
+    }
+
+    // Students submit once; only the assignment's host can read submissions.
+    match /assignmentResponses/{id} {
+      allow create: if request.resource.data.assignmentId is string
+                    && exists(/databases/$(database)/documents/assignments/$(request.resource.data.assignmentId))
+                    && get(/databases/$(database)/documents/assignments/$(request.resource.data.assignmentId)).data.closed != true;
+      allow read, delete: if signedIn()
+                    && get(/databases/$(database)/documents/assignments/$(resource.data.assignmentId)).data.hostUid == request.auth.uid;
+      allow update: if false;
+    }
+
+    // Everything else: no access.
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

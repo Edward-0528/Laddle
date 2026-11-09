@@ -1,126 +1,181 @@
 // ---------------------------------------------------------------------------
-// Join Game Page
-// Allows players to enter a game code (or receive one via QR / URL) and
-// their display name, then join the game lobby. Replaces the original
-// Player page with a cleaner, design-system-aligned interface.
+// Join Game (Sticker Sheet)
+// Guests reach this from a QR code or link (/j/CODE, /join/CODE, /join?code=)
+// with the code already filled in. Their name and avatar are remembered on
+// this device, so a returning guest joins with a single tap.
 // ---------------------------------------------------------------------------
 
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { socket } from '../services/socket';
-import Button from '../components/ui/Button';
-import Input from '../components/ui/Input';
-import Card from '../components/ui/Card';
+import { getPlayerToken, savePlayerToken } from '../services/session';
+import Avatar from '../components/sticker/Avatar';
+import { AVATARS, avatarLabel, isAvatarKind, randomAvatar, type AvatarKind } from '../components/sticker/avatars';
 import './JoinGame.css';
+
+const NAME_KEY = 'ladle.name';
+const AVATAR_KEY = 'ladle.avatar';
+
+function readStored(key: string): string {
+  try { return localStorage.getItem(key) ?? ''; } catch { return ''; }
+}
+function writeStored(key: string, value: string) {
+  try { localStorage.setItem(key, value); } catch { /* private mode: fine */ }
+}
+
+/** Saved per game so the game screen knows which leaderboard row is "me". */
+export function saveMe(code: string, name: string, avatar: AvatarKind) {
+  try { sessionStorage.setItem(`ladle.me.${code}`, JSON.stringify({ name, avatar })); } catch { /* ignore */ }
+}
 
 const JoinGame: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const params = useParams<{ code?: string }>();
   const [searchParams] = useSearchParams();
+  const linkCode = (params.code || searchParams.get('code') || '').toUpperCase().trim();
 
-  const [gameCode, setGameCode] = useState(searchParams.get('code') || '');
-  const [playerName, setPlayerName] = useState(user?.displayName || '');
+  const [gameCode, setGameCode] = useState(linkCode);
+  const [editingCode, setEditingCode] = useState(!linkCode);
+  const [playerName, setPlayerName] = useState(() => readStored(NAME_KEY) || user?.displayName?.split(' ')[0] || '');
+  const [avatar, setAvatar] = useState<AvatarKind>(() => {
+    const saved = readStored(AVATAR_KEY);
+    return isAvatarKind(saved) ? saved : randomAvatar();
+  });
   const [isJoining, setIsJoining] = useState(false);
   const [error, setError] = useState('');
+  const nameRef = useRef<HTMLInputElement>(null);
+  const codeRef = useRef<HTMLInputElement>(null);
 
-  // Auto-fill name from auth
   useEffect(() => {
-    if (user?.displayName && !playerName) {
-      setPlayerName(user.displayName);
-    }
-  }, [user]);
+    if (!playerName && user?.displayName) setPlayerName(user.displayName.split(' ')[0]);
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function handleJoin() {
-    if (!gameCode.trim()) {
-      setError('Please enter a game code.');
-      return;
-    }
-    if (!playerName.trim()) {
-      setError('Please enter your name.');
+  useEffect(() => {
+    (editingCode ? codeRef : nameRef).current?.focus();
+  }, [editingCode]);
+
+  const code = gameCode.toUpperCase().replace(/\s+/g, '');
+  const canJoin = code.length >= 4 && playerName.trim().length > 0 && !isJoining;
+
+  function handleJoin(e?: React.FormEvent) {
+    e?.preventDefault();
+    if (!code) { setError('Type the game code from the big screen.'); setEditingCode(true); return; }
+    if (!playerName.trim()) { setError('Add a name so your friends know it is you.'); nameRef.current?.focus(); return; }
+
+    // Already in this game on this device (refresh, closed tab): just go back in
+    if (getPlayerToken(code)) {
+      navigate(`/game/${code}`);
       return;
     }
 
     setIsJoining(true);
     setError('');
+    const name = playerName.trim();
 
-    const code = gameCode.toUpperCase().trim();
-    console.log('[Ladle] Attempting to join game:', code, 'as', playerName);
-
-    socket.emit(
-      'player:join',
-      { code, name: playerName.trim() },
-      (response: { ok: boolean; reason?: string }) => {
-        setIsJoining(false);
-        if (response.ok) {
-          console.log('[Ladle] Successfully joined game:', code);
-          navigate(`/game/${code}`);
-        } else {
-          console.error('[Ladle] Failed to join game:', response.reason);
-          setError(response.reason || 'Failed to join game. Please check the code and try again.');
-        }
+    socket.emit('player:join', { code, name, avatar }, (response: { ok: boolean; reason?: string; playerToken?: string }) => {
+      setIsJoining(false);
+      if (response.ok) {
+        writeStored(NAME_KEY, name);
+        writeStored(AVATAR_KEY, avatar);
+        saveMe(code, name, avatar);
+        if (response.playerToken) savePlayerToken(code, response.playerToken);
+        navigate(`/game/${code}`);
+      } else {
+        setError(response.reason || 'We could not join that game. Check the code and try again.');
+        if (/not found|code/i.test(response.reason || '')) setEditingCode(true);
       }
-    );
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter') {
-      handleJoin();
-    }
+    });
   }
 
   return (
-    <div className="join-game">
-      <div className="container join-game-inner">
-        <Card variant="elevated" padding="lg" className="join-card">
-          <h1 className="join-title">Join a Quiz</h1>
-          <p className="join-subtitle">
-            Enter the 6-character game code provided by your host
-          </p>
+    <div className="st-stage join">
+      <form className="join__inner" onSubmit={handleJoin} noValidate>
+        <header className="join__top">
+          <span className="join__brand st-display">PopPop</span>
+          {!editingCode && (
+            <button type="button" className="join__code-chip" onClick={() => setEditingCode(true)} aria-label={`Game code ${code}. Change code`}>
+              <span className="join__code-chip-code">{code}</span>
+              <span className="join__code-chip-edit">change</span>
+            </button>
+          )}
+        </header>
 
-          <div className="join-form">
-            <Input
-              label="Game Code"
-              placeholder="e.g. ABC123"
+        {editingCode && (
+          <div className="join__field st-anim-peel">
+            <label className="st-label" htmlFor="join-code">Game code</label>
+            <input
+              id="join-code"
+              ref={codeRef}
+              className="st-input st-input--code"
               value={gameCode}
-              onChange={(e) => setGameCode(e.target.value.toUpperCase())}
-              onKeyDown={handleKeyDown}
-              error={error && !gameCode.trim() ? 'Game code is required' : undefined}
-              fullWidth
+              onChange={(e) => setGameCode(e.target.value.toUpperCase().slice(0, 8))}
+              placeholder="ABC123"
+              autoComplete="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+              enterKeyHint="next"
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (code) { setEditingCode(false); } } }}
             />
-
-            <Input
-              label="Your Name"
-              placeholder="Enter your display name"
-              value={playerName}
-              onChange={(e) => setPlayerName(e.target.value)}
-              onKeyDown={handleKeyDown}
-              error={error && gameCode.trim() && !playerName.trim() ? 'Name is required' : undefined}
-              fullWidth
-            />
-
-            {error && gameCode.trim() && playerName.trim() && (
-              <div className="join-error">{error}</div>
-            )}
-
-            <Button
-              variant="primary"
-              size="lg"
-              fullWidth
-              onClick={handleJoin}
-              isLoading={isJoining}
-              disabled={!gameCode.trim() || !playerName.trim()}
-            >
-              Join Game
-            </Button>
+            <p className="st-muted join__hint">It's on the big screen at the front of the room.</p>
           </div>
+        )}
 
-          <p className="join-hint">
-            Ask your host for the game code, or scan the QR code displayed
-            on their screen.
-          </p>
-        </Card>
-      </div>
+        <section className="join__me" aria-label="Your sticker">
+          <div className="join__me-avatar st-anim-wobble">
+            <Avatar kind={avatar} size={128} />
+          </div>
+          <div className="join__me-text">
+            <div className="st-display join__me-title">You're the {avatarLabel(avatar)}</div>
+            <button type="button" className="st-btn st-btn--lemon join__shuffle" onClick={() => setAvatar(randomAvatar(avatar))}>
+              <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7 H8 L16 17 H21 M3 17 H8 L10 14.5 M14 9.5 L16 7 H21 M18 4 L21 7 L18 10 M18 14 L21 17 L18 20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              Shuffle
+            </button>
+          </div>
+        </section>
+
+        <fieldset className="join__picker">
+          <legend className="st-label">Or pick one</legend>
+          <div className="join__picker-grid">
+            {AVATARS.map((a) => (
+              <button
+                key={a.kind}
+                type="button"
+                className={`join__pick ${a.kind === avatar ? 'is-on' : ''}`}
+                aria-pressed={a.kind === avatar}
+                aria-label={a.label}
+                onClick={() => setAvatar(a.kind)}
+              >
+                <Avatar kind={a.kind} size={46} decorative />
+              </button>
+            ))}
+          </div>
+        </fieldset>
+
+        <div className="join__field">
+          <label className="st-label" htmlFor="join-name">Name on your sticker</label>
+          <input
+            id="join-name"
+            ref={nameRef}
+            className="st-input"
+            value={playerName}
+            onChange={(e) => setPlayerName(e.target.value.slice(0, 30))}
+            placeholder="Your name"
+            autoComplete="nickname"
+            enterKeyHint="go"
+            maxLength={30}
+          />
+        </div>
+
+        {error && <div className="st-error" role="alert">{error}</div>}
+
+        <div className="join__spacer" />
+
+        <button type="submit" className="st-btn st-btn--ink st-btn--lg st-btn--block" disabled={!canJoin}>
+          {isJoining ? 'Joining…' : 'Stick it on the wall'}
+        </button>
+      </form>
     </div>
   );
 };

@@ -12,7 +12,7 @@ import { getUserQuizzes, deleteQuiz } from '../services/quizzes';
 import { getRecentGames } from '../services/gameResults';
 import { getHostAssignments, createAssignment, generateAssignmentCode } from '../services/assignments';
 import { socket } from '../services/socket';
-import { QRCodeSVG } from 'qrcode.react';
+import { saveHostToken } from '../services/session';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import Input from '../components/ui/Input';
@@ -27,7 +27,6 @@ const Dashboard: React.FC = () => {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [launchingId, setLaunchingId] = useState<string | null>(null);
   /** Non-null while the Quick Launch modal is open; holds the game code + join URL */
-  const [quickLaunch, setQuickLaunch] = useState<{ code: string; joinUrl: string } | null>(null);
   /** Non-null while the Assign modal is open */
   const [assignModal, setAssignModal] = useState<{ quiz: Quiz } | null>(null);
   const [assignDeadline, setAssignDeadline] = useState('');
@@ -115,21 +114,23 @@ const Dashboard: React.FC = () => {
       text: q.text,
       choices: q.choices,
       answerIndex: q.correctAnswerIndex,
-      durationSec: quiz.settings?.questionDuration ?? 20,
+      // Per-question time wins over the quiz default
+      durationSec: Math.min(120, Math.max(5, q.timeLimit || quiz.settings?.questionDuration || 20)),
     }));
 
     function doEmit() {
       socket.emit(
         'host:create',
         { questions, quizTitle: quiz.title },
-        (response: { code?: string; error?: string }) => {
+        (response: { code?: string; hostToken?: string; error?: string }) => {
           setLaunchingId(null);
           if (response.error || !response.code) {
             setError(response.error ?? 'Failed to create game. Please try again.');
             return;
           }
-          const joinUrl = `${window.location.origin}/join?code=${response.code}`;
-          setQuickLaunch({ code: response.code, joinUrl });
+          if (response.hostToken) saveHostToken(response.code, response.hostToken);
+          // Straight to the live lobby: it already shows the code and QR
+          navigate(`/game/${response.code}?host=true`);
         }
       );
     }
@@ -167,36 +168,6 @@ const Dashboard: React.FC = () => {
     <div className="dashboard">
       <div className="container">
 
-        {/* ---- Quick Launch Modal ---- */}
-        {quickLaunch && (
-          <div className="ql-overlay" onClick={() => setQuickLaunch(null)}>
-            <div className="ql-modal" onClick={(e) => e.stopPropagation()}>
-              <h2 className="ql-title">Game Ready!</h2>
-              <p className="ql-sub">Share the code or QR with your players, then open your host view.</p>
-              <div className="ql-qr-wrap">
-                <QRCodeSVG value={quickLaunch.joinUrl} size={160} bgColor="#ffffff" fgColor="#1a0a3c" level="M" />
-              </div>
-              <div className="ql-code-display">
-                <span className="ql-code-label">Game Code</span>
-                <span className="ql-code-value">{quickLaunch.code}</span>
-              </div>
-              <p className="ql-domain">{window.location.origin}/join</p>
-              <div className="ql-actions">
-                <Button variant="ghost" size="sm" onClick={() => setQuickLaunch(null)}>Cancel</Button>
-                <Button
-                  variant="primary"
-                  size="md"
-                  onClick={() => {
-                    setQuickLaunch(null);
-                    navigate(`/game/${quickLaunch.code}?host=true`);
-                  }}
-                >
-                  Enter Host View
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
         {/* ---- Assign as Homework Modal ---- */}
         {assignModal && (
           <div className="ql-overlay" onClick={() => setAssignModal(null)}>

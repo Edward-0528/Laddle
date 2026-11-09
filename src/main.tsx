@@ -14,6 +14,7 @@ import { AuthProvider } from './context/AuthContext';
 import App from './App';
 import './styles/variables.css';
 import './styles/globals.css';
+import './styles/sticker.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {

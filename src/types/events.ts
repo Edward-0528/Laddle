@@ -23,6 +23,7 @@ export const EVENTS = {
   PLAYER_JOIN:      'player:join',
   PLAYER_ANSWER:    'player:answer',
   LOBBY_REQUEST:    'lobby:request',
+  SESSION_RESUME:   'session:resume',
 
   // ---- Server → Client ----
   GAME_ROLE:          'game:role',
@@ -39,6 +40,9 @@ export const EVENTS = {
   LOBBY_UPDATE:       'lobby:update',
   PLAYER_ANSWER_ACK:  'player:answer:ack',
   PLAYER_RECONNECTED: 'player:reconnected',
+  PLAYER_STATE:       'player:state',
+  SESSION_RESUME_FAILED: 'session:resume:failed',
+  HOST_RECONNECT_FAILED: 'host:reconnect:failed',
 } as const;
 
 export type EventName = (typeof EVENTS)[keyof typeof EVENTS];

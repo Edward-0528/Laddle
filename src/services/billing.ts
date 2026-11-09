@@ -3,18 +3,19 @@
 // Wraps the server billing endpoints for Stripe Checkout.
 // ---------------------------------------------------------------------------
 
+import { authHeaders } from './authHeaders';
+
 const API_BASE = import.meta.env.VITE_SERVER_URL || import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001';
 
 /**
  * Creates a Stripe Checkout session and redirects the user to it.
- * @param uid  Firebase user UID
- * @param email  User email
+ * The server reads who you are from your Firebase ID token, not from the body.
  */
-export async function startProCheckout(uid: string, email: string): Promise<void> {
+export async function startProCheckout(): Promise<void> {
   const res = await fetch(`${API_BASE}/api/billing/create-checkout`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ uid, email }),
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: '{}',
   });
 
   if (!res.ok) {

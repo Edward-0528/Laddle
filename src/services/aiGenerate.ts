@@ -6,6 +6,7 @@
 // ---------------------------------------------------------------------------
 
 import type { QuizQuestion } from '../types/quiz';
+import { authHeaders } from './authHeaders';
 
 export interface AIGenerateOptions {
   topic: string;
@@ -29,7 +30,7 @@ const SERVER_URL = import.meta.env.VITE_SERVER_URL ?? import.meta.env.VITE_SOCKE
 export async function generateQuestionsAI(opts: AIGenerateOptions): Promise<QuizQuestion[]> {
   const res = await fetch(`${SERVER_URL}/api/ai/generate`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify(opts),
   });
 

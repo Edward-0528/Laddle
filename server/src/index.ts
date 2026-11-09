@@ -30,8 +30,15 @@ import {
   AnswerSchema,
   GameActionSchema,
   AIGenerateSchema,
+  CodeSchema,
+  HostReconnectSchema,
+  PlayerResumeSchema,
+  ExtendTimeSchema,
+  SetTeamsSchema,
 } from './validators/schemas';
 import { generateQuestions } from './services/aiGenerator';
+import { adminConfigured, adminDb, verifyRequestUser } from './services/firebaseAdmin';
+import rateLimit from 'express-rate-limit';
 import {
   checkRateLimit,
   clearRateLimits,
@@ -51,7 +58,9 @@ import {
   getActiveGameCount,
   cleanupIdleGames,
   cleanupDisconnectedPlayers,
-  reconnectPlayer,
+  resumePlayer,
+  rankOf,
+  connectedPlayerCount,
   removeGame,
   setTeams,
   assignPlayerTeam,
@@ -118,7 +127,23 @@ app.use(
   })
 );
 
-app.use(express.json());
+// JSON bodies everywhere except the Stripe webhook, which must see the raw
+// bytes to verify its signature.
+const jsonParser = express.json({ limit: '100kb' });
+app.use((req, res, next) => {
+  if (req.originalUrl === '/api/billing/webhook') return next();
+  return jsonParser(req, res, next);
+});
+
+/** AI generation costs real money: cap it per user (or per IP when unauthenticated in dev). */
+const aiLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req) => (req as any).verifiedUid ?? req.ip ?? 'unknown',
+  message: { error: 'You have generated a lot of questions. Please wait a few minutes and try again.' },
+});
 
 // ---------------------------------------------------------------------------
 // HTTP Routes
@@ -168,7 +193,21 @@ app.get('/ping', (_req, res) => {
  * Requires GEMINI_API_KEY to be set in the server environment.
  * Returns 503 if the key is absent, 400 on bad input, 500 on Gemini failure.
  */
-app.post('/api/ai/generate', async (req, res) => {
+app.post('/api/ai/generate', async (req, res, next) => {
+  // Signed-in users only. Local development without Firebase Admin is allowed
+  // so the feature can be built and tested, with a warning in the log.
+  const user = await verifyRequestUser(req);
+  if (!user) {
+    if (NODE_ENV === 'production' || adminConfigured()) {
+      res.status(401).json({ error: 'Please sign in to use AI generation.' });
+      return;
+    }
+    logger.warn('[AI] Unauthenticated request allowed (development, no Firebase Admin)');
+  } else {
+    (req as any).verifiedUid = user.uid;
+  }
+  next();
+}, aiLimiter, async (req, res) => {
   if (!process.env.GEMINI_API_KEY) {
     res.status(503).json({ error: 'AI generation is not configured on this server.' });
     return;
@@ -199,11 +238,13 @@ app.post('/api/billing/create-checkout', async (req, res) => {
     res.status(503).json({ error: 'Billing is not configured on this server.' });
     return;
   }
-  const { uid, email } = req.body as { uid?: string; email?: string };
-  if (!uid || !email) {
-    res.status(400).json({ error: 'uid and email are required.' });
+  // Identity comes from the verified ID token, never from the request body.
+  const user = await verifyRequestUser(req);
+  if (!user || !user.email) {
+    res.status(401).json({ error: 'Please sign in before upgrading.' });
     return;
   }
+  const { uid, email } = user;
   try {
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2026-04-22.dahlia' });
     const session = await stripe.checkout.sessions.create({
@@ -216,7 +257,10 @@ app.post('/api/billing/create-checkout', async (req, res) => {
           quantity: 1,
         },
       ],
+      client_reference_id: uid,
       metadata: { uid },
+      // The webhook receives subscription events, so the uid must live there too
+      subscription_data: { metadata: { uid } },
       success_url: `${process.env.CLIENT_ORIGIN || 'http://localhost:5173'}/dashboard?upgraded=1`,
       cancel_url: `${process.env.CLIENT_ORIGIN || 'http://localhost:5173'}/pricing`,
     });
@@ -250,41 +294,47 @@ app.post(
       return;
     }
 
-    // We handle subscription active / deleted to flip the plan field in Firestore.
-    // Firestore Admin SDK is optional — fall back gracefully if not configured.
+    // Plan state is written to entitlements/{uid}, which clients can read but
+    // never write. Any failure returns 500 so Stripe retries the event.
+    const db = adminDb();
+    if (!db) {
+      logger.error('[Billing] Webhook received but Firebase Admin is not configured');
+      res.status(500).json({ error: 'Entitlement store unavailable.' });
+      return;
+    }
+
     try {
-      const { initializeApp, getApps, cert } = await import('firebase-admin/app');
-      const { getFirestore } = await import('firebase-admin/firestore');
+      const planFor = (status?: string): 'pro' | 'free' => {
+        // trialing counts as paid; past_due keeps access during Stripe's retry window
+        return status === 'active' || status === 'trialing' || status === 'past_due' ? 'pro' : 'free';
+      };
+      const save = async (uid: string, data: Record<string, unknown>) => {
+        await db.collection('entitlements').doc(uid).set({ ...data, updatedAt: Date.now() }, { merge: true });
+        logger.info('[Billing] Entitlement updated', { uid, ...data });
+      };
 
-      if (!getApps().length && process.env.FIREBASE_ADMIN_CREDENTIALS) {
-        const creds = JSON.parse(process.env.FIREBASE_ADMIN_CREDENTIALS);
-        initializeApp({ credential: cert(creds) });
-      }
-
-      if (getApps().length) {
-        const db = getFirestore();
-        if (
-          event.type === 'customer.subscription.created' ||
-          event.type === 'customer.subscription.updated'
-        ) {
-          const sub = event.data.object as { metadata?: { uid?: string }; status?: string };
-          const uid = sub.metadata?.uid;
-          if (uid) {
-            const plan = sub.status === 'active' ? 'pro' : 'free';
-            await db.collection('users').doc(uid).set({ plan }, { merge: true });
-            logger.info('[Billing] Plan updated', { uid, plan });
-          }
-        } else if (event.type === 'customer.subscription.deleted') {
-          const sub = event.data.object as { metadata?: { uid?: string } };
-          const uid = sub.metadata?.uid;
-          if (uid) {
-            await db.collection('users').doc(uid).set({ plan: 'free' }, { merge: true });
-            logger.info('[Billing] Subscription cancelled — plan set to free', { uid });
-          }
+      if (event.type === 'checkout.session.completed') {
+        const session = event.data.object as { client_reference_id?: string | null; metadata?: { uid?: string }; customer?: string | null };
+        const uid = session.client_reference_id || session.metadata?.uid;
+        if (uid) await save(uid, { plan: 'pro', status: 'active', stripeCustomerId: session.customer ?? null });
+      } else if (
+        event.type === 'customer.subscription.created' ||
+        event.type === 'customer.subscription.updated' ||
+        event.type === 'customer.subscription.deleted'
+      ) {
+        const sub = event.data.object as { metadata?: { uid?: string }; status?: string; customer?: string };
+        const uid = sub.metadata?.uid;
+        if (uid) {
+          const status = event.type === 'customer.subscription.deleted' ? 'canceled' : sub.status;
+          await save(uid, { plan: planFor(status), status: status ?? 'unknown', stripeCustomerId: sub.customer ?? null });
+        } else {
+          logger.warn('[Billing] Subscription event without uid metadata', { type: event.type });
         }
       }
     } catch (err: any) {
-      logger.error('[Billing] Firestore update failed', { message: err?.message });
+      logger.error('[Billing] Entitlement update failed', { message: err?.message });
+      res.status(500).json({ error: 'Could not record the billing event.' });
+      return;
     }
 
     res.json({ received: true });
@@ -323,7 +373,7 @@ io.on('connection', (socket) => {
   // -----------------------------------------------------------------------
   socket.on(
     'host:create',
-    (payload: unknown, callback: (data: { code?: string; error?: string }) => void) => {
+    (payload: unknown, callback: (data: { code?: string; hostToken?: string; error?: string }) => void) => {
       // Rate limit check
       if (!checkRateLimit(socket.id, 'host:create', RATE_LIMITS.hostCreate)) {
         logger.warn('Rate limit exceeded for game creation', { socketId: socket.id });
@@ -339,17 +389,19 @@ io.on('connection', (socket) => {
       }
 
       // Create the game
-      const code = createGame(socket.id, result.data.questions, result.data.quizTitle);
-      if (!code) {
+      const created = createGame(socket.id, result.data.questions, result.data.quizTitle);
+      if (!created) {
         return callback({ error: 'Server is at capacity. Please try again later.' });
       }
+      const { code, hostToken } = created;
 
       socket.join(code);
 
       // Notify the host of their role so the client does not need URL params
       socket.emit(EVENTS.GAME_ROLE, { role: 'host', code });
 
-      callback({ code });
+      // hostToken lets this host (and only this host) reclaim the game after a refresh
+      callback({ code, hostToken });
     }
   );
 
@@ -358,7 +410,8 @@ io.on('connection', (socket) => {
   // -----------------------------------------------------------------------
   socket.on(
     'player:join',
-    (payload: unknown, callback: (data: { ok: boolean; reason?: string }) => void) => {
+    (payload: unknown, callback: (data: { ok: boolean; reason?: string; playerToken?: string }) => void) => {
+      if (typeof callback !== 'function') return;
       if (!checkRateLimit(socket.id, 'player:join', RATE_LIMITS.playerJoin)) {
         logger.warn('Rate limit exceeded for join attempts', { socketId: socket.id });
         return callback({ ok: false, reason: 'Too many join attempts. Please wait a moment.' });
@@ -369,20 +422,11 @@ io.on('connection', (socket) => {
         return callback({ ok: false, reason: 'Invalid game code or name provided.' });
       }
 
-      const { code, name } = result.data;
+      const { code, name, avatar } = result.data;
 
-      // ---- Reconnect path: player was in an active game and lost connection ----
-      const reconnected = reconnectPlayer(code, socket.id, name);
-      if (reconnected.ok) {
-        socket.join(code);
-        socket.emit(EVENTS.GAME_ROLE, { role: 'player', code });
-        socket.emit(EVENTS.PLAYER_RECONNECTED, { message: 'You have been reconnected.' });
-        io.to(code).emit(EVENTS.LOBBY_UPDATE, getConnectedPlayerList(code));
-        return callback({ ok: true });
-      }
-
-      // ---- Normal join path ----
-      const joinResult = addPlayer(code, socket.id, name);
+      // Returning players resume with their token (session:resume); joining by
+      // name alone can no longer take over someone else's seat.
+      const joinResult = addPlayer(code, socket.id, name, avatar);
 
       if (!joinResult.ok) {
         return callback(joinResult);
@@ -397,14 +441,14 @@ io.on('connection', (socket) => {
       socket.emit(EVENTS.GAME_ROLE, { role: 'player', code, teamName });
 
       // Broadcast updated player list to all participants
-      io.to(code).emit(EVENTS.LOBBY_UPDATE, getPlayerList(code));
+      io.to(code).emit(EVENTS.LOBBY_UPDATE, getConnectedPlayerList(code));
       // Also broadcast updated team info so host can see team assignments live
       if (teamName) {
         const game = getGame(code);
         if (game) io.to(code).emit('lobby:teams', { teamsEnabled: true, teamNames: game.teamNames });
       }
 
-      callback({ ok: true });
+      callback({ ok: true, playerToken: joinResult.playerToken });
     }
   );
 
@@ -412,13 +456,12 @@ io.on('connection', (socket) => {
   // host:set-teams - Host enables teams and sets team names before game starts
   // -----------------------------------------------------------------------
   socket.on('host:set-teams', (payload: unknown, callback?: (res: { ok: boolean; error?: string }) => void) => {
-    const cb = callback ?? (() => {});
-    const parsed = (payload as any);
-    const code: string = parsed?.code;
-    const teamNames: string[] = parsed?.teamNames;
-    if (!code || !Array.isArray(teamNames) || teamNames.length < 2) {
-      return cb({ ok: false, error: 'Need at least 2 team names.' });
+    const cb = typeof callback === 'function' ? callback : () => {};
+    const parsed = SetTeamsSchema.safeParse(payload);
+    if (!parsed.success) {
+      return cb({ ok: false, error: 'Use 2 to 8 short team names.' });
     }
+    const { code, teamNames } = parsed.data;
     if (!isGameHost(code, socket.id)) {
       return cb({ ok: false, error: 'Not the host.' });
     }
@@ -448,7 +491,8 @@ io.on('connection', (socket) => {
     }
 
     const game = getGame(code);
-    if (!game || Object.keys(game.players).length === 0) return;
+    // Only from the lobby: a double click or a stale button can't skip questions
+    if (!game || game.state !== 'lobby' || Object.keys(game.players).length === 0) return;
 
     startNextQuestion(code);
   });
@@ -480,7 +524,8 @@ io.on('connection', (socket) => {
       // If every player has now answered, end the question early
       const game = getGame(code);
       if (game && game.state === 'question') {
-        const playerCount = Object.keys(game.players).length;
+        // Disconnected players can't answer, so they don't hold everyone up
+        const playerCount = connectedPlayerCount(game);
         const answerCount = Object.keys(game.answers).length;
         if (answerCount >= playerCount && playerCount > 0) {
           endCurrentQuestion(code, game.currentQuestionIndex);
@@ -493,14 +538,16 @@ io.on('connection', (socket) => {
   // lobby:request - Client requests a fresh player list (used on mount)
   // -----------------------------------------------------------------------
   socket.on(EVENTS.LOBBY_REQUEST, (payload: unknown) => {
-    const parsed = (payload as { code?: string })?.code;
-    if (typeof parsed !== 'string' || !parsed) return;
-    const code = parsed.toUpperCase().trim();
+    const parsed = CodeSchema.safeParse((payload as { code?: unknown })?.code);
+    if (!parsed.success) return;
+    const code = parsed.data;
     const game = getGame(code);
     if (!game) return;
-    // Ensure socket is in the room before sending
+    // Only the host and players of this game may watch its room
+    const isMember = game.hostSocketId === socket.id || socket.id in game.players;
+    if (!isMember) return;
     socket.join(code);
-    socket.emit(EVENTS.LOBBY_UPDATE, getPlayerList(code));
+    socket.emit(EVENTS.LOBBY_UPDATE, getConnectedPlayerList(code));
   });
 
   // -----------------------------------------------------------------------
@@ -533,6 +580,7 @@ io.on('connection', (socket) => {
       .map((p, i) => ({
         rank: i + 1,
         name: p.name,
+        avatar: p.avatar,
         score: p.score,
         pointsEarned: 0,
         streak: p.streak,
@@ -587,13 +635,20 @@ io.on('connection', (socket) => {
   // host:reconnect - Host re-identifies after losing connection
   // -----------------------------------------------------------------------
   socket.on('host:reconnect', (payload: unknown) => {
-    const code = (payload as any)?.code;
-    if (typeof code !== 'string') return;
+    const parsed = HostReconnectSchema.safeParse(payload);
+    if (!parsed.success) {
+      socket.emit('host:reconnect:failed');
+      return;
+    }
+    const { code, hostToken } = parsed.data;
 
-    const result = reconnectHost(code, socket.id);
+    const result = reconnectHost(code, socket.id, hostToken);
     if (!result.ok || !result.game) {
       socket.emit('host:reconnect:failed');
       return;
+    }
+    if (result.previousSocketId && result.previousSocketId !== socket.id) {
+      io.sockets.sockets.get(result.previousSocketId)?.leave(code);
     }
 
     // Cancel the abandon timer
@@ -601,6 +656,7 @@ io.on('connection', (socket) => {
     if (t) { clearTimeout(t); hostAbandonTimers.delete(code); }
 
     socket.join(code);
+    socket.emit(EVENTS.GAME_ROLE, { role: 'host', code });
 
     // Tell players the host is back
     io.to(code).emit('host:back');
@@ -623,17 +679,64 @@ io.on('connection', (socket) => {
           durationSec: currentQ.durationSec,
         },
       } : undefined,
-      players: getPlayerList(code),
+      players: getConnectedPlayerList(code),
       answerCount: Object.keys(game.answers).length,
+      quizTitle: game.quizTitle,
     });
+  });
+
+  // -----------------------------------------------------------------------
+  // session:resume - A player comes back after a refresh or network drop
+  // -----------------------------------------------------------------------
+  socket.on('session:resume', (payload: unknown) => {
+    if (!checkRateLimit(socket.id, 'player:join', RATE_LIMITS.playerJoin)) return;
+    const parsed = PlayerResumeSchema.safeParse(payload);
+    if (!parsed.success) {
+      socket.emit('session:resume:failed');
+      return;
+    }
+    const { code, playerToken } = parsed.data;
+    const resumed = resumePlayer(code, socket.id, playerToken);
+    const game = getGame(code);
+    if (!resumed.ok || !resumed.player || !game) {
+      socket.emit('session:resume:failed');
+      return;
+    }
+    if (resumed.previousSocketId) {
+      io.sockets.sockets.get(resumed.previousSocketId)?.leave(code);
+    }
+    socket.join(code);
+    socket.emit(EVENTS.GAME_ROLE, { role: 'player', code, teamName: resumed.player.teamName });
+
+    const currentQ = game.state === 'question' ? game.questions[game.currentQuestionIndex] : undefined;
+    const answer = game.answers[socket.id];
+    socket.emit('player:state', {
+      state: game.state,
+      paused: game.paused,
+      currentQuestion: currentQ ? {
+        index: game.currentQuestionIndex,
+        total: game.questions.length,
+        endsAt: game.questionEndsAt,
+        timeRemainingMs: game.paused ? game.pauseTimeRemainingMs : undefined,
+        q: { id: currentQ.id, text: currentQ.text, choices: currentQ.choices, durationSec: currentQ.durationSec },
+      } : undefined,
+      answered: Boolean(answer),
+      choiceIndex: answer?.choiceIndex,
+      score: resumed.player.score,
+      rank: rankOf(game, socket.id),
+      players: getConnectedPlayerList(code),
+    });
+    io.to(code).emit(EVENTS.LOBBY_UPDATE, getConnectedPlayerList(code));
   });
 
   // -----------------------------------------------------------------------
   // host:pause - Host pauses the current question timer
   // -----------------------------------------------------------------------
   socket.on('host:pause', (payload: unknown) => {
-    const code = (payload as any)?.code;
-    if (!code || !isGameHost(code, socket.id)) return;
+    const parsed = GameActionSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const { code } = parsed.data;
+    if (!isGameHost(code, socket.id)) return;
     const result = pauseGame(code);
     if (!result.ok) return;
     // Clear the pending question-end timer
@@ -646,8 +749,10 @@ io.on('connection', (socket) => {
   // host:resume - Host resumes a paused question
   // -----------------------------------------------------------------------
   socket.on('host:resume', (payload: unknown) => {
-    const code = (payload as any)?.code;
-    if (!code || !isGameHost(code, socket.id)) return;
+    const parsed = GameActionSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const { code } = parsed.data;
+    if (!isGameHost(code, socket.id)) return;
     const result = resumeGame(code);
     if (!result.ok || !result.newEndsAt) return;
     const game = getGame(code);
@@ -664,9 +769,10 @@ io.on('connection', (socket) => {
   // host:extend-time - Host adds extra seconds to the current question
   // -----------------------------------------------------------------------
   socket.on('host:extend-time', (payload: unknown) => {
-    const code = (payload as any)?.code;
-    const extraSeconds = Number((payload as any)?.extraSeconds) || 30;
-    if (!code || !isGameHost(code, socket.id)) return;
+    const parsed = ExtendTimeSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const { code, extraSeconds } = parsed.data;
+    if (!isGameHost(code, socket.id)) return;
     const result = extendQuestionTime(code, extraSeconds);
     if (!result.ok) return;
     const game = getGame(code);
@@ -773,6 +879,18 @@ setInterval(() => {
   cleanupIdleGames();
   cleanupDisconnectedPlayers();
 }, 60_000);
+
+// ---------------------------------------------------------------------------
+// Last-resort safety net: log and keep serving every other game instead of
+// letting one bad event take the whole process (and every live game) down.
+// ---------------------------------------------------------------------------
+
+process.on('uncaughtException', (err) => {
+  logger.error('Uncaught exception', { message: err.message, stack: err.stack });
+});
+process.on('unhandledRejection', (reason) => {
+  logger.error('Unhandled promise rejection', { reason: String(reason) });
+});
 
 // ---------------------------------------------------------------------------
 // Server Startup

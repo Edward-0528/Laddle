@@ -7,6 +7,7 @@
 // database without changing the socket handler interface.
 // ---------------------------------------------------------------------------
 
+import { randomBytes } from 'crypto';
 import { logger } from '../utils/logger';
 
 // ---------------------------------------------------------------------------
@@ -22,6 +23,8 @@ export interface Player {
   connected: boolean;
   disconnectedAt?: number;
   teamName?: string;  // set when teams are enabled
+  avatar?: string;    // sticker avatar kind
+  token: string;      // secret used to resume this seat after a refresh
 }
 
 export interface Question {
@@ -36,11 +39,14 @@ export interface PlayerAnswer {
   questionId: string;
   choiceIndex: number;
   answeredAt: number;
+  /** Time left on the clock when the answer arrived (pause/extend can't inflate it). */
+  remainingMs: number;
 }
 
 export interface Game {
   code: string;
   hostSocketId: string;
+  hostToken: string;
   players: Record<string, Player>;
   questions: Question[];
   state: 'lobby' | 'question' | 'reveal' | 'results' | 'ended';
@@ -68,6 +74,7 @@ export interface QuestionResult {
 export interface RankedPlayer {
   rank: number;
   name: string;
+  avatar?: string;
   score: number;
   pointsEarned: number;
   streak: number;
@@ -97,7 +104,16 @@ const CODE_LENGTH = 6;
 // In-Memory Store
 // ---------------------------------------------------------------------------
 
-const games: Record<string, Game> = {};
+// Null-prototype object: a code like "constructor" or "__proto__" can never
+// resolve to a built-in property (that used to crash the whole server).
+const games: Record<string, Game> = Object.create(null);
+
+/** Grace period for answers that arrive just after the deadline (network latency). */
+const ANSWER_GRACE_MS = 750;
+
+export function newToken(): string {
+  return randomBytes(16).toString('hex');
+}
 
 // ---------------------------------------------------------------------------
 // Game Code Generation
@@ -134,7 +150,7 @@ export function getActiveGameCount(): number {
  * Creates a new game and returns the generated code, or null if the server
  * has reached its maximum game capacity.
  */
-export function createGame(hostSocketId: string, questions: Question[], quizTitle?: string): string | null {
+export function createGame(hostSocketId: string, questions: Question[], quizTitle?: string): { code: string; hostToken: string } | null {
   if (Object.keys(games).length >= MAX_ACTIVE_GAMES) {
     logger.warn('Game creation rejected - server at capacity', {
       activeGames: Object.keys(games).length,
@@ -144,9 +160,11 @@ export function createGame(hostSocketId: string, questions: Question[], quizTitl
   }
 
   const code = generateGameCode();
+  const hostToken = newToken();
   games[code] = {
     code,
     hostSocketId,
+    hostToken,
     players: {},
     questions,
     state: 'lobby',
@@ -161,7 +179,7 @@ export function createGame(hostSocketId: string, questions: Question[], quizTitl
   };
 
   logger.info('Game created', { code, hostSocketId, questionCount: questions.length });
-  return code;
+  return { code, hostToken };
 }
 
 /**
@@ -178,8 +196,9 @@ export function getGame(code: string): Game | undefined {
 export function addPlayer(
   code: string,
   socketId: string,
-  name: string
-): { ok: boolean; reason?: string } {
+  name: string,
+  avatar?: string
+): { ok: boolean; reason?: string; playerToken?: string } {
   const game = games[code];
   if (!game) {
     return { ok: false, reason: 'Game not found. Please check the code and try again.' };
@@ -190,18 +209,32 @@ export function addPlayer(
   if (Object.keys(game.players).length >= MAX_PLAYERS_PER_GAME) {
     return { ok: false, reason: 'This game is full. Maximum players reached.' };
   }
+  const taken = Object.values(game.players).some((p) => p.name.toLowerCase() === name.toLowerCase());
+  if (taken) {
+    return { ok: false, reason: 'Someone in this game already has that name. Try another one.' };
+  }
 
-  game.players[socketId] = { id: socketId, name, score: 0, streak: 0, previousRank: 0, connected: true };
-  logger.info('Player joined game', { code, playerName: name, socketId });
-  return { ok: true };
+  const token = newToken();
+  game.players[socketId] = { id: socketId, name, avatar, token, score: 0, streak: 0, previousRank: 0, connected: true };
+  logger.info('Player joined game', { code, socketId });
+  return { ok: true, playerToken: token };
 }
 
 /**
  * Returns the list of players for a given game.
  */
-export function getPlayerList(code: string): Player[] {
+/** What other clients may see about a player: never the resume token. */
+export type PublicPlayer = Omit<Player, 'token'>;
+
+export function toPublic(p: Player): PublicPlayer {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { token, ...rest } = p;
+  return rest;
+}
+
+export function getPlayerList(code: string): PublicPlayer[] {
   const game = games[code];
-  return game ? Object.values(game.players) : [];
+  return game ? Object.values(game.players).map(toPublic) : [];
 }
 
 /**
@@ -229,7 +262,7 @@ export function advanceToNextQuestion(code: string): {
       durationSec: number;
     };
   };
-  leaderboard?: { rank: number; name: string; score: number }[];
+  leaderboard?: { rank: number; name: string; avatar?: string; score: number }[];
 } {
   const game = games[code];
   if (!game) return { finished: true };
@@ -244,6 +277,7 @@ export function advanceToNextQuestion(code: string): {
       .map((player, index) => ({
         rank: index + 1,
         name: player.name,
+        avatar: player.avatar,
         score: player.score,
       }));
 
@@ -289,25 +323,27 @@ export function recordAnswer(
   choiceIndex: number
 ): boolean {
   const game = games[code];
-  if (!game || game.state !== 'question') return false;
+  if (!game || game.state !== 'question' || game.paused) return false;
   if (!(socketId in game.players)) return false;
   if (game.answers[socketId]) return false; // Already answered
 
   const now = Date.now();
-  if (now > (game.questionEndsAt || 0)) return false;
+  const endsAt = game.questionEndsAt || 0;
+  if (now > endsAt + ANSWER_GRACE_MS) return false;
 
   const currentQuestion = game.questions[game.currentQuestionIndex];
   if (choiceIndex >= currentQuestion.choices.length) return false;
 
+  const durationMs = currentQuestion.durationSec * 1000;
   game.answers[socketId] = {
     questionId: currentQuestion.id,
     choiceIndex,
     answeredAt: now,
+    remainingMs: Math.min(durationMs, Math.max(0, endsAt - now)),
   };
 
   logger.info('Answer recorded', {
     code,
-    playerName: game.players[socketId].name,
     questionIndex: game.currentQuestionIndex + 1,
   });
 
@@ -344,21 +380,24 @@ export function finalizeQuestion(code: string): QuestionResult | null {
     }
   }
 
-  // Score each player
+  // Score each player. Speed is measured from the time left when the answer
+  // arrived (clamped to the question length), so pausing or adding time can
+  // never push a score above the maximum.
+  const earned: Record<string, number> = Object.create(null);
   for (const [playerId, answer] of Object.entries(game.answers)) {
     const player = game.players[playerId];
     if (!player) continue;
 
     if (answer.choiceIndex === question.answerIndex) {
-      // Speed score: up to 1000 pts based on how quickly they answered
-      const timeRemaining = Math.max(0, (game.questionEndsAt || 0) - answer.answeredAt);
-      const speedScore = Math.round((timeRemaining / questionDurationMs) * 1000);
+      const fraction = Math.min(1, Math.max(0, answer.remainingMs / questionDurationMs));
+      const speedScore = Math.round(fraction * 1000);
 
       // Streak bonus: +100 pts per streak level (capped at +500)
       player.streak += 1;
       const streakBonus = Math.min(player.streak - 1, 5) * 100;
 
-      player.score += speedScore + streakBonus;
+      earned[playerId] = speedScore + streakBonus;
+      player.score += earned[playerId];
     } else {
       player.streak = 0;
     }
@@ -376,18 +415,12 @@ export function finalizeQuestion(code: string): QuestionResult | null {
     .sort((a, b) => b.score - a.score)
     .map((player, index) => {
       const currentRank = index + 1;
-      const pointsEarned = (() => {
-        const answer = game.answers[player.id];
-        if (!answer || answer.choiceIndex !== question.answerIndex) return 0;
-        const timeRemaining = Math.max(0, (game.questionEndsAt || 0) - answer.answeredAt);
-        const speedScore = Math.round((timeRemaining / questionDurationMs) * 1000);
-        const streakBonus = Math.min(player.streak - 1, 5) * 100;
-        return speedScore + streakBonus;
-      })();
+      const pointsEarned = earned[player.id] ?? 0;
 
       return {
         rank: currentRank,
         name: player.name,
+        avatar: player.avatar,
         score: player.score,
         pointsEarned,
         streak: player.streak,
@@ -418,7 +451,7 @@ export function finalizeQuestion(code: string): QuestionResult | null {
 export function handleDisconnect(socketId: string): {
   type: 'host' | 'player' | 'none';
   code?: string;
-  players?: Player[];
+  players?: PublicPlayer[];
   keepAlive?: boolean;  // true = game kept alive, caller should NOT emit game:ended yet
 } {
   const game = Object.values(games).find(
@@ -430,9 +463,9 @@ export function handleDisconnect(socketId: string): {
   if (game.hostSocketId === socketId) {
     const code = game.code;
 
-    // If the game is active (in-progress), keep it alive so the host can reconnect.
-    // The caller is responsible for setting a reconnect timeout.
-    if (game.state !== 'lobby' && game.state !== 'results' && game.state !== 'ended') {
+    // Keep the game alive (lobby included) so a host who refreshes or drops
+    // Wi-Fi can come back. The caller is responsible for the reconnect timeout.
+    if (game.state !== 'results' && game.state !== 'ended') {
       game.hostConnected = false;
       game.hostDisconnectedAt = Date.now();
       logger.info('Host disconnected from active game — keeping alive for reconnect', { code });
@@ -449,23 +482,22 @@ export function handleDisconnect(socketId: string): {
     const player = game.players[socketId];
     const name = player.name;
 
-    // For active (in-progress) games, mark disconnected so the player can
-    // reconnect within the reconnect window instead of being removed.
-    if (game.state !== 'lobby' && game.state !== 'results' && game.state !== 'ended') {
+    // Keep the seat (and score) so the player can resume with their token.
+    if (game.state !== 'results' && game.state !== 'ended') {
       player.connected = false;
       player.disconnectedAt = Date.now();
-      logger.info('Player disconnected from active game', { code: game.code, playerName: name });
+      logger.info('Player disconnected', { code: game.code, state: game.state });
       return {
         type: 'player',
         code: game.code,
-        players: Object.values(game.players).filter((p) => p.connected),
+        players: Object.values(game.players).filter((p) => p.connected).map(toPublic),
       };
     }
 
     delete game.players[socketId];
     delete game.answers[socketId];
-    logger.info('Player left game', { code: game.code, playerName: name });
-    return { type: 'player', code: game.code, players: Object.values(game.players) };
+    logger.info('Player left game', { code: game.code, nameLength: name.length });
+    return { type: 'player', code: game.code, players: Object.values(game.players).map(toPublic) };
   }
 
   return { type: 'none' };
@@ -522,7 +554,8 @@ export function extendQuestionTime(
 ): { ok: boolean; newEndsAt?: number; newTimeRemainingMs?: number } {
   const game = games[code];
   if (!game || game.state !== 'question') return { ok: false };
-  const extraMs = extraSeconds * 1000;
+  if (!Number.isFinite(extraSeconds) || extraSeconds <= 0) return { ok: false };
+  const extraMs = Math.min(extraSeconds, 120) * 1000;
   if (game.paused) {
     game.pauseTimeRemainingMs = (game.pauseTimeRemainingMs ?? 0) + extraMs;
     logger.info('Extended paused question time', { code, extraSeconds });
@@ -539,16 +572,20 @@ export function extendQuestionTime(
  */
 export function reconnectHost(
   code: string,
-  newSocketId: string
-): { ok: boolean; game?: Game } {
+  newSocketId: string,
+  hostToken: string
+): { ok: boolean; game?: Game; previousSocketId?: string } {
   const game = games[code];
   if (!game) return { ok: false };
-  if (game.hostConnected) return { ok: false };   // host is already connected (or game just started)
+  // The token proves identity, so a valid host always takes the seat back,
+  // even before the server has noticed the old connection died.
+  if (game.hostToken !== hostToken) return { ok: false };
+  const previousSocketId = game.hostSocketId;
   game.hostSocketId = newSocketId;
   game.hostConnected = true;
   game.hostDisconnectedAt = undefined;
   logger.info('Host reconnected', { code, newSocketId });
-  return { ok: true, game };
+  return { ok: true, game, previousSocketId };
 }
 
 /**
@@ -618,49 +655,53 @@ export function getTeamLeaderboard(code: string): Array<{ teamName: string; scor
  * Returns only connected players (excludes temporarily disconnected ones).
  * Used for lobby broadcasts so disconnected players are not shown.
  */
-export function getConnectedPlayerList(code: string): Player[] {
+export function getConnectedPlayerList(code: string): PublicPlayer[] {
   const game = games[code];
-  return game ? Object.values(game.players).filter((p) => p.connected) : [];
+  return game ? Object.values(game.players).filter((p) => p.connected).map(toPublic) : [];
 }
 
 /**
- * Attempts to reconnect a player to an in-progress game.
- * Matches by player name and disconnected status, then re-maps to the new socketId.
- * Returns { ok: true, player } on success, { ok: false } if no match found.
+ * Resumes a player's seat after a refresh or dropped connection. The player
+ * proves who they are with the token they got on join; a valid token always
+ * takes the seat over, even if the server still thinks the old socket is alive.
  */
-export function reconnectPlayer(
+export function resumePlayer(
   code: string,
   newSocketId: string,
-  name: string
-): { ok: boolean; player?: Player } {
+  token: string
+): { ok: boolean; player?: Player; previousSocketId?: string } {
   const game = games[code];
-  // Only reconnect to active games (not lobby or finished)
-  if (!game || game.state === 'lobby' || game.state === 'results' || game.state === 'ended') {
-    return { ok: false };
-  }
+  if (!game || game.state === 'results' || game.state === 'ended') return { ok: false };
 
-  // Find a disconnected player with the matching name
-  const entry = Object.entries(game.players).find(
-    ([, p]) => p.name === name && !p.connected
-  );
+  const entry = Object.entries(game.players).find(([, p]) => p.token === token);
   if (!entry) return { ok: false };
-
   const [oldSocketId, player] = entry;
 
-  // Move player record and any pending answer to the new socket ID
-  delete game.players[oldSocketId];
-  if (game.answers[oldSocketId]) {
-    game.answers[newSocketId] = game.answers[oldSocketId];
-    delete game.answers[oldSocketId];
+  if (oldSocketId !== newSocketId) {
+    delete game.players[oldSocketId];
+    if (game.answers[oldSocketId]) {
+      game.answers[newSocketId] = game.answers[oldSocketId];
+      delete game.answers[oldSocketId];
+    }
   }
-
   player.id = newSocketId;
   player.connected = true;
   player.disconnectedAt = undefined;
   game.players[newSocketId] = player;
 
-  logger.info('Player reconnected', { code, playerName: name, newSocketId });
-  return { ok: true, player };
+  logger.info('Player resumed', { code, newSocketId });
+  return { ok: true, player, previousSocketId: oldSocketId !== newSocketId ? oldSocketId : undefined };
+}
+
+/** Ranks players by score (1-based). */
+export function rankOf(game: Game, socketId: string): number {
+  const sorted = Object.values(game.players).sort((a, b) => b.score - a.score);
+  return sorted.findIndex((p) => p.id === socketId) + 1;
+}
+
+/** Connected players only: used for the "everyone has answered" early end. */
+export function connectedPlayerCount(game: Game): number {
+  return Object.values(game.players).filter((p) => p.connected).length;
 }
 
 /** How long a disconnected player slot is held open (90 seconds). */
@@ -673,6 +714,8 @@ const RECONNECT_WINDOW_MS = 90_000;
 export function cleanupDisconnectedPlayers(): void {
   const now = Date.now();
   for (const game of Object.values(games)) {
+    // In a running game a seat keeps its score until the game ends.
+    if (game.state !== 'lobby') continue;
     for (const [socketId, player] of Object.entries(game.players)) {
       if (
         !player.connected &&
@@ -681,10 +724,7 @@ export function cleanupDisconnectedPlayers(): void {
       ) {
         delete game.players[socketId];
         delete game.answers[socketId];
-        logger.info('Removed stale disconnected player slot', {
-          code: game.code,
-          playerName: player.name,
-        });
+        logger.info('Removed stale disconnected lobby seat', { code: game.code });
       }
     }
   }
