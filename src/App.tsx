@@ -52,7 +52,9 @@ function App() {
   const location = useLocation();
 
   // Game and join screens are full-screen: no marketing navbar or footer
-  const isGameRoute = /^\/(game|join|j)(\/|$)/.test(location.pathname);
+  // The landing page brings its own Sticker Sheet header and footer
+  const isGameRoute = /^\/(game|join|j)(\/|$)/.test(location.pathname)
+    || (location.pathname === '/' && !user);
 
   const firstName = user?.displayName?.split(' ')[0] ?? user?.email?.split('@')[0] ?? '';
 
