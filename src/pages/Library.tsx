@@ -1,404 +1,199 @@
 // ---------------------------------------------------------------------------
-// Library Page
-// Browse pre-configured K-12 quiz templates aligned to California curriculum.
-// Teachers can filter by subject and grade band, preview questions, and
-// fork any template into their personal dashboard with one click.
+// Trivia Library (Sticker Sheet)
+// Ready-made trivia packs for pub quizzes, parties and game nights. Anyone
+// can host a pack in one tap, no account needed. Signed-in hosts can also
+// copy a pack into their own quizzes to edit it.
 // ---------------------------------------------------------------------------
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getLibraryQuizzes, forkQuizToUser, seedLibrary } from '../services/library';
-import Button from '../components/ui/Button';
-import Card from '../components/ui/Card';
-import type { Quiz, SubjectArea, GradeBand } from '../types/quiz';
-import {
-  SUBJECT_LABELS,
-  SUBJECT_COLORS,
-  GRADE_BANDS,
-} from '../data/libraryQuizzes';
+import SiteHeader from '../components/sticker/SiteHeader';
+import Avatar from '../components/sticker/Avatar';
+import AnswerShape, { answerStyle, CheckIcon } from '../components/sticker/AnswerShape';
+import { CATEGORIES, categoryOf, isCategoryId, mixedPack, packsIn, type TriviaPack } from '../data/trivia';
+import { copyPackToUser, hostPack } from '../services/library';
 import './Library.css';
 
-// All subjects available in the library
-const SUBJECTS: Array<{ value: SubjectArea; label: string }> = [
-  { value: 'math',           label: 'Math'                 },
-  { value: 'science',        label: 'Science'              },
-  { value: 'english',        label: 'English Language Arts'},
-  { value: 'history',        label: 'History'              },
-  { value: 'social-studies', label: 'Social Studies'       },
-];
+const DIFFICULTY_LABEL = { easy: 'Easy', medium: 'Medium', hard: 'Hard' } as const;
 
 const Library: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [params, setParams] = useSearchParams();
+  const raw = params.get('category');
+  const category = isCategoryId(raw) ? raw : undefined;
 
-  const [quizzes, setQuizzes]               = useState<Quiz[]>([]);
-  const [isLoading, setIsLoading]           = useState(true);
-  const [error, setError]                   = useState('');
-  const [subjectFilter, setSubjectFilter]   = useState<SubjectArea | ''>(
-    (searchParams.get('subject') as SubjectArea) ?? ''
-  );
-  const [bandFilter, setBandFilter]         = useState<GradeBand | ''>('');
-  const [forkingId, setForkingId]           = useState<string | null>(null);
-  const [forkedId, setForkedId]             = useState<string | null>(null); // just-forked quiz id
-  const [forkError, setForkError]           = useState('');
-  const [previewQuiz, setPreviewQuiz]       = useState<Quiz | null>(null);
-  const [isSeeding, setIsSeeding]           = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const [peek, setPeek] = useState<TriviaPack | null>(null);
 
-  // Load (or reload) templates whenever filters change
-  const load = useCallback(async () => {
-    setIsLoading(true);
-    setError('');
-    try {
-      const data = await getLibraryQuizzes({
-        subject: subjectFilter || undefined,
-        gradeBand: bandFilter || undefined,
-      });
-      setQuizzes(data);
-    } catch (err) {
-      console.error('[Ladle] Failed to load library:', err);
-      setError('Could not load the quiz library. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [subjectFilter, bandFilter]);
+  const packs = useMemo(() => packsIn(category), [category]);
+  const totalQuestions = useMemo(() => packsIn().reduce((n, p) => n + p.questions.length, 0), []);
 
-  useEffect(() => { load(); }, [load]);
-
-  async function handleSeed() {
-    setIsSeeding(true);
-    setError('');
-    try {
-      await seedLibrary();
-      await load();
-    } catch (err) {
-      console.error('[Ladle] Seed failed:', err);
-      setError('Seeding failed — check the console for details.');
-    } finally {
-      setIsSeeding(false);
-    }
+  function pickCategory(id?: string) {
+    const next = new URLSearchParams(params);
+    if (id) next.set('category', id); else next.delete('category');
+    setParams(next, { replace: true });
   }
 
-  async function handleFork(quiz: Quiz) {
-    if (!user) {
-      navigate('/login');
-      return;
-    }
-    setForkingId(quiz.id);
-    setForkError('');
+  async function host(pack: TriviaPack) {
+    setBusy(`host:${pack.id}`);
+    setError('');
     try {
-      const newId = await forkQuizToUser(quiz, user.uid);
-      setForkedId(newId);
-      // Navigate to dashboard after a short delay so the user sees the success message
-      setTimeout(() => navigate('/dashboard'), 1800);
+      const code = await hostPack(pack);
+      navigate(`/game/${code}?host=true`);
     } catch (err: any) {
-      console.error('[Ladle] Fork failed:', err?.code, err?.message, err);
-      setForkError(
-        err?.code === 'permission-denied'
-          ? 'Permission denied. Make sure you are signed in and try again.'
-          : err?.message ?? 'Failed to copy the quiz. Please try again.'
-      );
-    } finally {
-      setForkingId(null);
+      setError(err?.message ?? 'Could not start the game. Please try again.');
+      setBusy(null);
     }
   }
 
-  function subjectColor(subject?: SubjectArea) {
-    return subject ? SUBJECT_COLORS[subject] : '#8B6BD4';
+  async function copy(pack: TriviaPack) {
+    if (!user) { navigate('/login'); return; }
+    setBusy(`copy:${pack.id}`);
+    setError('');
+    try {
+      await copyPackToUser(pack, user.uid);
+      setCopiedId(pack.id);
+      setTimeout(() => setCopiedId((id) => (id === pack.id ? null : id)), 4000);
+    } catch (err: any) {
+      setError(err?.code === 'permission-denied' ? 'Sign in again to copy packs.' : 'Could not copy that pack. Please try again.');
+    } finally {
+      setBusy(null);
+    }
   }
 
-  // Derive unique grade bands present in current results for the pill count
-  const gradeBandCounts = GRADE_BANDS.map((b) => ({
-    ...b,
-    count: quizzes.filter((q) => q.gradeBand === b.value).length,
-  }));
+  const hosting = busy?.startsWith('host:');
 
   return (
-    <div className="library-page">
-      <div className="container">
+    <div className="st-stage lib">
+      <SiteHeader />
 
-        {/* -------- Page Header -------- */}
-        <div className="library-header">
-          <div className="library-header-text">
-            <h1 className="library-title">Quiz Library</h1>
-            <p className="library-subtitle">
-              Pre-configured quizzes for California K-12 classrooms. Pick a quiz,
-              copy it to your dashboard, and launch it in seconds.
-            </p>
-          </div>
-          {user && (
-            <Button variant="ghost" size="md" onClick={() => navigate('/dashboard')}>
-              My Dashboard
-            </Button>
-          )}
+      <section className="lib-hero">
+        <div>
+          <span className="st-tag lib-hero__tag">{packsIn().length} packs · {totalQuestions} questions</span>
+          <h1 className="st-display lib-hero__title">Pick a pack. Press play.</h1>
+          <p className="lib-hero__sub">
+            Ready-made trivia for pub quiz night, office parties and the family Christmas showdown.
+            Hosting is free and nobody needs an account.
+          </p>
         </div>
+        <button type="button" className="st-sticker lib-mixed" onClick={() => host(mixedPack())} disabled={!!busy}>
+          <span className="lib-mixed__avatars" aria-hidden="true">
+            <Avatar kind="goose" size={56} decorative />
+            <Avatar kind="tomato" size={56} decorative />
+            <Avatar kind="frog" size={56} decorative />
+          </span>
+          <span className="st-display lib-mixed__title">Can't decide?</span>
+          <span className="lib-mixed__sub">Host a Mixed Bag of 15 random questions</span>
+          <span className="st-btn st-btn--lemon lib-mixed__go">Shuffle &amp; host</span>
+        </button>
+      </section>
 
-        {/* -------- Success Toast -------- */}
-        {forkedId && (
-          <div className="library-toast">
-            Quiz copied to your library! Taking you to your dashboard...
-          </div>
-        )}
-
-        {/* -------- Fork Error Toast -------- */}
-        {forkError && (
-          <div className="library-fork-error">
-            <p>{forkError}</p>
-            <Button variant="ghost" size="sm" onClick={() => setForkError('')}>Dismiss</Button>
-          </div>
-        )}
-
-        {/* -------- Filter Bar -------- */}
-        <div className="library-filters">
-          {/* Subject pills */}
-          <div className="filter-group">
-            <span className="filter-label">Subject</span>
-            <div className="filter-pills">
-              <button
-                className={`filter-pill ${subjectFilter === '' ? 'filter-pill-active' : ''}`}
-                onClick={() => setSubjectFilter('')}
-              >
-                All
-              </button>
-              {SUBJECTS.map((s) => (
-                <button
-                  key={s.value}
-                  className={`filter-pill ${subjectFilter === s.value ? 'filter-pill-active' : ''}`}
-                  style={subjectFilter === s.value ? { background: subjectColor(s.value), color: '#fff' } : {}}
-                  onClick={() => setSubjectFilter(subjectFilter === s.value ? '' : s.value)}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Grade band pills */}
-          <div className="filter-group">
-            <span className="filter-label">Grade Band</span>
-            <div className="filter-pills">
-              <button
-                className={`filter-pill ${bandFilter === '' ? 'filter-pill-active' : ''}`}
-                onClick={() => setBandFilter('')}
-              >
-                All Grades
-              </button>
-              {gradeBandCounts.map((b) => (
-                <button
-                  key={b.value}
-                  className={`filter-pill ${bandFilter === b.value ? 'filter-pill-active' : ''}`}
-                  onClick={() => setBandFilter(bandFilter === b.value ? '' : b.value)}
-                >
-                  {b.label}
-                  {b.count > 0 && <span className="filter-pill-count">{b.count}</span>}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* -------- Error -------- */}
-        {error && (
-          <div className="library-error">
-            <p>{error}</p>
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <Button variant="ghost" size="sm" onClick={() => { setError(''); load(); }}>Retry</Button>
-              {!user && (
-                <Button variant="primary" size="sm" onClick={() => navigate('/login')}>Sign in to seed</Button>
-              )}
-              {user && (
-                <Button variant="primary" size="sm" onClick={handleSeed} isLoading={isSeeding}>
-                  Seed Library Now
-                </Button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* -------- Loading -------- */}
-        {isLoading && (
-          <div className="library-loading">
-            <div className="loading-spinner" />
-            <p>Loading quiz library…</p>
-          </div>
-        )}
-
-        {/* -------- Empty State -------- */}
-        {!isLoading && quizzes.length === 0 && !error && (
-          <div className="library-empty">
-            <div className="library-empty-icon"></div>
-            <h2>No quizzes match your filters</h2>
-            {subjectFilter || bandFilter ? (
-              <>
-                <p>Try clearing the subject or grade filter.</p>
-                <Button variant="ghost" size="md" onClick={() => { setSubjectFilter(''); setBandFilter(''); }}>
-                  Clear Filters
-                </Button>
-              </>
-            ) : (
-              <>
-                <p>The quiz library hasn't been seeded yet.</p>
-                <Button
-                  variant="primary"
-                  size="md"
-                  onClick={handleSeed}
-                  isLoading={isSeeding}
-                >
-                  Seed Library Now
-                </Button>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* -------- Quiz Grid -------- */}
-        {!isLoading && quizzes.length > 0 && (
-          <>
-            <p className="library-result-count">
-              {quizzes.length} quiz{quizzes.length !== 1 ? 'zes' : ''} found
-            </p>
-
-            {/* Group by grade band */}
-            {(bandFilter ? [bandFilter] : GRADE_BANDS.map((b) => b.value) as GradeBand[])
-              .filter((band) => quizzes.some((q) => q.gradeBand === band))
-              .map((band) => {
-                const bandQuizzes = quizzes.filter((q) => q.gradeBand === band);
-                const bandLabel = GRADE_BANDS.find((b) => b.value === band)?.label ?? band;
-                return (
-                  <section key={band} className="library-section">
-                    <h2 className="library-section-title">{bandLabel}</h2>
-                    <div className="library-grid">
-                      {bandQuizzes.map((quiz) => (
-                        <Card
-                          key={quiz.id}
-                          variant="default"
-                          padding="md"
-                          className="library-card"
-                        >
-                          {/* Color bar + subject tag */}
-                          <div
-                            className="library-card-bar"
-                            style={{ background: subjectColor(quiz.subject) }}
-                          />
-                          <div className="library-card-tags">
-                            {quiz.subject && (
-                              <span
-                                className="library-tag library-tag-subject"
-                                style={{
-                                  background: `${subjectColor(quiz.subject)}18`,
-                                  color: subjectColor(quiz.subject),
-                                }}
-                              >
-                                {SUBJECT_LABELS[quiz.subject]}
-                              </span>
-                            )}
-                            {quiz.gradeLevel && (
-                              <span className="library-tag library-tag-grade">
-                                Grade {quiz.gradeLevel}
-                              </span>
-                            )}
-                          </div>
-
-                          <h3 className="library-card-title">{quiz.title}</h3>
-                          <p className="library-card-desc">{quiz.description}</p>
-
-                          <div className="library-card-meta">
-                            <span>{quiz.questions.length} questions</span>
-                            {quiz.caStandard && (
-                              <span className="library-standard-badge">
-                                {quiz.caStandard}
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="library-card-actions">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setPreviewQuiz(quiz)}
-                            >
-                              Preview
-                            </Button>
-                            <Button
-                              variant="primary"
-                              size="sm"
-                              onClick={() => handleFork(quiz)}
-                              isLoading={forkingId === quiz.id}
-                            >
-                              {user ? 'Use This Quiz' : 'Sign in to Use'}
-                            </Button>
-                          </div>
-                        </Card>
-                      ))}
-                    </div>
-                  </section>
-                );
-              })}
-          </>
-        )}
-      </div>
-
-      {/* -------- Question Preview Modal -------- */}
-      {previewQuiz && (
-        <div className="library-modal-overlay" onClick={() => setPreviewQuiz(null)}>
-          <div
-            className="library-modal"
-            onClick={(e) => e.stopPropagation()}
+      <nav className="lib-cats" aria-label="Categories">
+        <button type="button" className={`lib-cat ${!category ? 'is-on' : ''}`} onClick={() => pickCategory()} aria-pressed={!category}>
+          All
+        </button>
+        {CATEGORIES.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            className={`lib-cat ${category === c.id ? 'is-on' : ''}`}
+            style={{ ['--cat' as string]: c.color, ['--cat-ink' as string]: c.ink }}
+            onClick={() => pickCategory(c.id)}
+            aria-pressed={category === c.id}
           >
-            <div className="library-modal-header">
-              <div>
-                <h2 className="library-modal-title">{previewQuiz.title}</h2>
-                <p className="library-modal-subtitle">{previewQuiz.description}</p>
+            <Avatar kind={c.avatar} size={30} decorative />
+            {c.label}
+          </button>
+        ))}
+      </nav>
+
+      {error && <div className="st-error lib-error" role="alert">{error}</div>}
+
+      <section className="lib-grid" aria-live="polite">
+        {packs.map((p, i) => {
+          const c = categoryOf(p.category);
+          return (
+            <article key={p.id} className="st-sticker lib-pack" style={{ ['--tilt' as string]: `${i % 3 === 0 ? -1 : i % 3 === 1 ? 0.8 : -0.4}deg` }}>
+              <div className="lib-pack__top" style={{ background: c.color, color: c.ink }}>
+                <Avatar kind={c.avatar} size={64} decorative />
+                <span className="lib-pack__cat">{c.label}</span>
               </div>
-              <button
-                className="library-modal-close"
-                onClick={() => setPreviewQuiz(null)}
-                aria-label="Close preview"
-              >
-                x
-              </button>
-            </div>
+              <div className="lib-pack__body">
+                <h2 className="st-display lib-pack__title">{p.title}</h2>
+                <p className="lib-pack__blurb">{p.blurb}</p>
+                <div className="lib-pack__meta">
+                  <span>{p.questions.length} questions</span>
+                  <span className={`lib-diff lib-diff--${p.difficulty}`}>{DIFFICULTY_LABEL[p.difficulty]}</span>
+                </div>
+                <div className="lib-pack__actions">
+                  <button type="button" className="st-btn st-btn--ink lib-pack__host" onClick={() => host(p)} disabled={!!busy}>
+                    {busy === `host:${p.id}` ? 'Starting…' : 'Host now'}
+                  </button>
+                  <button type="button" className="st-btn st-btn--quiet lib-pack__small" onClick={() => setPeek(p)}>Peek</button>
+                  <button type="button" className="st-btn st-btn--quiet lib-pack__small" onClick={() => copy(p)} disabled={!!busy}>
+                    {copiedId === p.id ? 'Copied!' : busy === `copy:${p.id}` ? 'Copying…' : 'Copy & edit'}
+                  </button>
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </section>
 
-            <div className="library-modal-body">
-              <p className="library-modal-q-count">
-                {previewQuiz.questions.length} Questions
-              </p>
-              <ol className="library-modal-questions">
-                {previewQuiz.questions.map((q, i) => (
-                  <li key={q.id ?? i} className="library-modal-question">
-                    <p className="library-modal-q-text">
-                      <span className="library-modal-q-num">{i + 1}.</span> {q.text}
-                    </p>
-                    <ul className="library-modal-choices">
-                      {q.choices.map((choice, ci) => (
-                        <li
-                          key={ci}
-                          className={`library-modal-choice ${ci === q.correctAnswerIndex ? 'library-modal-choice-correct' : ''}`}
-                        >
-                          {ci === q.correctAnswerIndex && <span className="choice-check">correct</span>}
-                          {choice}
-                        </li>
-                      ))}
-                    </ul>
-                  </li>
-                ))}
-              </ol>
-            </div>
+      <p className="lib-foot">
+        Want your own round? <button type="button" className="lib-linkbtn" onClick={() => navigate(user ? '/create' : '/register')}>Write a quiz</button>
+        {copiedId && <> · Copied packs live in <button type="button" className="lib-linkbtn" onClick={() => navigate('/dashboard')}>My quizzes</button></>}
+      </p>
 
-            <div className="library-modal-footer">
-              <Button variant="ghost" size="md" onClick={() => setPreviewQuiz(null)}>
-                Close
-              </Button>
-              <Button
-                variant="primary"
-                size="md"
-                onClick={() => { setPreviewQuiz(null); handleFork(previewQuiz); }}
-                isLoading={forkingId === previewQuiz.id}
-              >
-                {user ? 'Use This Quiz' : 'Sign in to Use'}
-              </Button>
+      {/* Peek: answers shown, so it's for the host's eyes only */}
+      {peek && (
+        <div className="lib-overlay" role="dialog" aria-modal="true" aria-label={`${peek.title} questions`} onClick={() => setPeek(null)}>
+          <div className="st-sticker lib-peek st-anim-peel" onClick={(e) => e.stopPropagation()}>
+            <header className="lib-peek__head">
+              <div>
+                <span className="lib-peek__cat">{categoryOf(peek.category).label}</span>
+                <h2 className="st-display">{peek.title}</h2>
+                <p className="lib-peek__warn">Spoilers: correct answers are ticked. Don't show the room!</p>
+              </div>
+              <button type="button" className="lib-peek__close" onClick={() => setPeek(null)} aria-label="Close">×</button>
+            </header>
+            <ol className="lib-peek__list">
+              {peek.questions.map((q, qi) => (
+                <li key={qi}>
+                  <p className="lib-peek__q">{q.text}</p>
+                  <div className="lib-peek__choices">
+                    {q.choices.map((ch, ci) => {
+                      const s = answerStyle(ci);
+                      const right = ci === q.answer;
+                      return (
+                        <span key={ci} className={`lib-peek__choice ${right ? 'is-right' : ''}`}>
+                          <AnswerShape index={ci} size={14} fill={s.color} />
+                          {ch}
+                          {right && <CheckIcon size={14} color="var(--st-ink)" />}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </li>
+              ))}
+            </ol>
+            <div className="lib-peek__actions">
+              <button type="button" className="st-btn st-btn--ink" onClick={() => host(peek)} disabled={!!busy}>Host this pack</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {hosting && (
+        <div className="lib-overlay lib-overlay--busy" role="status">
+          <div className="st-sticker lib-busy">
+            <Avatar kind="snail" size={88} decorative />
+            <p className="st-display">Setting up your game<span className="st-dots"><span>.</span><span>.</span><span>.</span></span></p>
+            <p className="lib-busy__sub">If the server was asleep this can take up to 30 seconds.</p>
           </div>
         </div>
       )}

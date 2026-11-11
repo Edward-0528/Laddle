@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------------
 // AIGenerateModal
-// Small overlay in QuizBuilder that collects topic / grade / count and
+// Small overlay in QuizBuilder that collects topic / difficulty / count and
 // calls the server to generate questions via Gemini.
 // ---------------------------------------------------------------------------
 
@@ -14,19 +14,16 @@ interface Props {
   onClose: () => void;
 }
 
-const GRADE_LEVELS = [
-  'Kindergarten',
-  'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5',
-  'Grade 6', 'Grade 7', 'Grade 8',
-  'Grade 9 (Freshman)', 'Grade 10 (Sophomore)',
-  'Grade 11 (Junior)', 'Grade 12 (Senior)',
-  'College / University',
-  'Adult / General',
+const LEVELS = [
+  'Easy: casual party crowd',
+  'Medium: pub quiz regulars',
+  'Hard: serious trivia buffs',
+  'Family: kids and adults together',
 ];
 
 const AIGenerateModal: React.FC<Props> = ({ onGenerate, onClose }) => {
   const [topic, setTopic] = useState('');
-  const [gradeLevel, setGradeLevel] = useState('Grade 6');
+  const [gradeLevel, setGradeLevel] = useState(LEVELS[1]);
   const [count, setCount] = useState(5);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -64,7 +61,7 @@ const AIGenerateModal: React.FC<Props> = ({ onGenerate, onClose }) => {
         <form className="ai-modal-form" onSubmit={handleSubmit}>
           <Input
             label="Topic"
-            placeholder='e.g. "The American Civil War" or "Photosynthesis"'
+            placeholder='e.g. "Harry Potter", "90s boy bands" or "Christmas movies"'
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
             fullWidth
@@ -73,14 +70,14 @@ const AIGenerateModal: React.FC<Props> = ({ onGenerate, onClose }) => {
 
           <div className="ai-modal-row">
             <div className="ai-modal-field">
-              <label className="ai-modal-label">Grade Level</label>
+              <label className="ai-modal-label">Difficulty</label>
               <select
                 className="ai-modal-select"
                 value={gradeLevel}
                 onChange={(e) => setGradeLevel(e.target.value)}
                 disabled={isLoading}
               >
-                {GRADE_LEVELS.map((g) => (
+                {LEVELS.map((g) => (
                   <option key={g} value={g}>{g}</option>
                 ))}
               </select>

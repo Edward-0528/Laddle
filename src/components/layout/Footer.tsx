@@ -21,7 +21,7 @@ const Footer: React.FC = () => {
               <span className="footer-logo-text">PopPop!</span>
             </Link>
             <p className="footer-tagline">
-              The interactive quiz platform for classrooms, events, and teams.
+              Live trivia for pubs, parties and game nights.
               Create, share, and play quizzes in real time.
             </p>
           </div>

@@ -81,7 +81,13 @@ const Navbar: React.FC<NavbarProps> = ({
             to="/join"
             className={`navbar-link ${isActive('/join') ? 'navbar-link-active' : ''}`}
           >
-            Join Quiz
+            Join Game
+          </Link>
+          <Link
+            to="/library"
+            className={`navbar-link ${isActive('/library') ? 'navbar-link-active' : ''}`}
+          >
+            Trivia Packs
           </Link>
           <Link
             to="/marketplace"
@@ -110,12 +116,6 @@ const Navbar: React.FC<NavbarProps> = ({
                 className={`navbar-link ${isActive('/org-settings') ? 'navbar-link-active' : ''}`}
               >
                 Brand Settings
-              </Link>
-              <Link
-                to="/my-progress"
-                className={`navbar-link ${isActive('/my-progress') ? 'navbar-link-active' : ''}`}
-              >
-                My Progress
               </Link>
             </>
           )}
@@ -166,7 +166,10 @@ const Navbar: React.FC<NavbarProps> = ({
             Home
           </Link>
           <Link to="/join" className="navbar-mobile-link" onClick={closeMobileMenu}>
-            Join Quiz
+            Join Game
+          </Link>
+          <Link to="/library" className="navbar-mobile-link" onClick={closeMobileMenu}>
+            Trivia Packs
           </Link>
           <Link to="/marketplace" className="navbar-mobile-link" onClick={closeMobileMenu}>
             Marketplace
@@ -180,12 +183,6 @@ const Navbar: React.FC<NavbarProps> = ({
             <>
               <Link to="/create" className="navbar-mobile-link" onClick={closeMobileMenu}>
                 Create Quiz
-              </Link>
-              <Link to="/assignments" className="navbar-mobile-link" onClick={closeMobileMenu}>
-                Assignments
-              </Link>
-              <Link to="/my-progress" className="navbar-mobile-link" onClick={closeMobileMenu}>
-                My Progress
               </Link>
               <Link to="/org-settings" className="navbar-mobile-link" onClick={closeMobileMenu}>
                 Brand Settings

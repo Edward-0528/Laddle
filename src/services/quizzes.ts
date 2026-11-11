@@ -183,25 +183,21 @@ export async function incrementQuizStats(
  * Optionally filter by subject, gradeBand, or a text search on title.
  */
 export async function getPublicQuizzes(opts: {
-  subject?: string;
-  gradeBand?: string;
+  category?: string;
   search?: string;
   maxResults?: number;
 } = {}): Promise<Quiz[]> {
   const col = getCollection();
-  let q = query(
+  const q = query(
     col,
     where('isPublic', '==', true),
     orderBy('rating', 'desc'),
     limit(opts.maxResults ?? 60)
   );
-  if (opts.subject) {
-    q = query(col, where('isPublic', '==', true), where('subject', '==', opts.subject), orderBy('rating', 'desc'), limit(opts.maxResults ?? 60));
-  }
   const snapshot = await safeFetchDocs(q);
   let results = snapshot.docs.map(docToQuiz);
-  // Client-side grade band + text search (Firestore doesn't support multi-field inequality)
-  if (opts.gradeBand) results = results.filter((qz) => qz.gradeBand === opts.gradeBand);
+  // Client-side category + text search (Firestore doesn't support multi-field inequality)
+  if (opts.category) results = results.filter((qz) => qz.category === opts.category);
   if (opts.search) {
     const term = opts.search.toLowerCase();
     results = results.filter(

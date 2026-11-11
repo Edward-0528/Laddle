@@ -16,22 +16,14 @@ import ImportModal from '../components/ui/ImportModal';
 import AIGenerateModal from '../components/ui/AIGenerateModal';
 import { generateQuestionsAI } from '../services/aiGenerate';
 import type { QuizQuestion, QuizSettings, QuestionType } from '../types/quiz';
+import { CATEGORIES as TRIVIA_CATEGORIES } from '../data/trivia';
 import './QuizBuilder.css';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const CATEGORIES = [
-  'General Knowledge',
-  'Science',
-  'History',
-  'Movies and TV',
-  'Music',
-  'Sports',
-  'Technology',
-  'Pop Culture',
-];
+const CATEGORIES = [...TRIVIA_CATEGORIES.map((c) => c.label), 'Other'];
 
 const DEFAULT_SETTINGS: QuizSettings = {
   questionDuration: 30,
@@ -548,24 +540,6 @@ const QuizBuilder: React.FC = () => {
                 </p>
               </div>
 
-              {/* Curriculum standards */}
-              <div className="standards-section">
-                <Input
-                  label="Curriculum Standards (optional)"
-                  placeholder="e.g. CCSS.MATH.3.OA.A.1, NGSS.3-PS2-1"
-                  value={(activeQuestion.standards ?? []).join(', ')}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    const parsed = raw
-                      .split(',')
-                      .map((s) => s.trim())
-                      .filter(Boolean);
-                    updateQuestionField(activeQuestionIndex, 'standards', parsed.length ? parsed : undefined);
-                  }}
-                  fullWidth
-                />
-                <p className="choices-hint">Comma-separated standard codes. Shown in the marketplace and library.</p>
-              </div>
             </div>
           )}
         </Card>

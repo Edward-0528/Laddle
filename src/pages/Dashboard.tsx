@@ -10,12 +10,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { getUserQuizzes, deleteQuiz } from '../services/quizzes';
 import { getRecentGames } from '../services/gameResults';
-import { getHostAssignments, createAssignment, generateAssignmentCode } from '../services/assignments';
-import { socket } from '../services/socket';
-import { saveHostToken } from '../services/session';
+import { hostGame } from '../services/hostGame';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
-import Input from '../components/ui/Input';
 import type { Quiz } from '../types/quiz';
 import './Dashboard.css';
 
@@ -26,14 +23,6 @@ const Dashboard: React.FC = () => {
   const [error, setError] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [launchingId, setLaunchingId] = useState<string | null>(null);
-  /** Non-null while the Quick Launch modal is open; holds the game code + join URL */
-  /** Non-null while the Assign modal is open */
-  const [assignModal, setAssignModal] = useState<{ quiz: Quiz } | null>(null);
-  const [assignDeadline, setAssignDeadline] = useState('');
-  const [assignLabel, setAssignLabel] = useState('');
-  const [isAssigning, setIsAssigning] = useState(false);
-  const [assignedCode, setAssignedCode] = useState<string | null>(null);
-
   const {
     data: quizzes = [],
     isLoading,
@@ -48,42 +37,6 @@ const Dashboard: React.FC = () => {
     queryFn: () => getRecentGames(user!.uid, 5),
     enabled: !!user,
   });
-
-  const { data: assignments = [] } = useQuery({
-    queryKey: ['assignments', user?.uid],
-    queryFn: () => getHostAssignments(user!.uid),
-    enabled: !!user,
-  });
-
-  async function handleAssign() {
-    if (!assignModal || !user) return;
-    if (!assignDeadline) { setError('Please pick a deadline.'); return; }
-    setIsAssigning(true);
-    setError('');
-    const quiz = assignModal.quiz;
-    const code = generateAssignmentCode();
-    const id = await createAssignment({
-      hostUid: user.uid,
-      quizId: quiz.id,
-      quizTitle: quiz.title,
-      questions: quiz.questions,
-      code,
-      deadline: new Date(assignDeadline).getTime(),
-      label: assignLabel.trim() || undefined,
-      createdAt: Date.now(),
-      closed: false,
-    });
-    setIsAssigning(false);
-    if (id) {
-      queryClient.invalidateQueries({ queryKey: ['assignments', user.uid] });
-      setAssignModal(null);
-      setAssignDeadline('');
-      setAssignLabel('');
-      setAssignedCode(code);
-    } else {
-      setError('Failed to create assignment. Please try again.');
-    }
-  }
 
   async function handleDelete(quizId: string) {
     const confirmed = window.confirm(
@@ -105,49 +58,27 @@ const Dashboard: React.FC = () => {
     }
   }
 
-  function handleLaunch(quiz: Quiz) {
+  async function handleLaunch(quiz: Quiz) {
     setLaunchingId(quiz.id);
     setError('');
-
-    const questions = quiz.questions.map((q, i) => ({
-      id: q.id || `q${i + 1}`,
-      text: q.text,
-      choices: q.choices,
-      answerIndex: q.correctAnswerIndex,
-      // Per-question time wins over the quiz default
-      durationSec: Math.min(120, Math.max(5, q.timeLimit || quiz.settings?.questionDuration || 20)),
-    }));
-
-    function doEmit() {
-      socket.emit(
-        'host:create',
-        { questions, quizTitle: quiz.title },
-        (response: { code?: string; hostToken?: string; error?: string }) => {
-          setLaunchingId(null);
-          if (response.error || !response.code) {
-            setError(response.error ?? 'Failed to create game. Please try again.');
-            return;
-          }
-          if (response.hostToken) saveHostToken(response.code, response.hostToken);
-          // Straight to the live lobby: it already shows the code and QR
-          navigate(`/game/${response.code}?host=true`);
-        }
+    try {
+      const code = await hostGame(
+        quiz.title,
+        quiz.questions.map((q, i) => ({
+          id: q.id || `q${i + 1}`,
+          text: q.text,
+          choices: q.choices,
+          answerIndex: q.correctAnswerIndex,
+          // Per-question time wins over the quiz default
+          durationSec: q.timeLimit || quiz.settings?.questionDuration || 20,
+        })),
       );
-    }
-
-    if (socket.connected) {
-      doEmit();
-    } else {
-      // Server is waking up — wait for connection then emit automatically
-      socket.connect();
-      socket.once('connect', doEmit);
-      // If it doesn't connect within 30 s, surface a real error
-      const timeout = setTimeout(() => {
-        socket.off('connect', doEmit);
-        setLaunchingId(null);
-        setError('Could not reach the game server. Please check your connection and try again.');
-      }, 30000);
-      socket.once('connect', () => clearTimeout(timeout));
+      // Straight to the live lobby: it already shows the code and QR
+      navigate(`/game/${code}?host=true`);
+    } catch (err: any) {
+      setError(err?.message ?? 'Failed to create game. Please try again.');
+    } finally {
+      setLaunchingId(null);
     }
   }
 
@@ -168,59 +99,6 @@ const Dashboard: React.FC = () => {
     <div className="dashboard">
       <div className="container">
 
-        {/* ---- Assign as Homework Modal ---- */}
-        {assignModal && (
-          <div className="ql-overlay" onClick={() => setAssignModal(null)}>
-            <div className="ql-modal" onClick={(e) => e.stopPropagation()}>
-              <h2 className="ql-title">Assign as Homework</h2>
-              <p className="ql-sub"><strong>{assignModal.quiz.title}</strong> — {assignModal.quiz.questions.length} questions</p>
-              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-                <Input
-                  label="Deadline"
-                  type="datetime-local"
-                  value={assignDeadline}
-                  onChange={(e) => setAssignDeadline(e.target.value)}
-                  fullWidth
-                />
-                <Input
-                  label="Label (optional)"
-                  placeholder='e.g. "Period 3 – Chapter 5 Review"'
-                  value={assignLabel}
-                  onChange={(e) => setAssignLabel(e.target.value)}
-                  fullWidth
-                />
-              </div>
-              {error && <p style={{ color: 'var(--color-danger)', fontSize: '0.85rem', margin: 0 }}>{error}</p>}
-              <div className="ql-actions">
-                <Button variant="ghost" size="sm" onClick={() => setAssignModal(null)}>Cancel</Button>
-                <Button variant="primary" size="md" isLoading={isAssigning} onClick={handleAssign}>
-                  Create Assignment
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ---- Assignment Created Confirmation ---- */}
-        {assignedCode && (
-          <div className="ql-overlay" onClick={() => setAssignedCode(null)}>
-            <div className="ql-modal" onClick={(e) => e.stopPropagation()}>
-              <h2 className="ql-title">Assignment Created!</h2>
-              <p className="ql-sub">Share this code with your students. They visit <strong>{window.location.origin}/assignment/{assignedCode}</strong></p>
-              <div className="ql-code-display">
-                <span className="ql-code-label">Student Code</span>
-                <span className="ql-code-value">{assignedCode}</span>
-              </div>
-              <p className="ql-domain">{window.location.origin}/assignment/{assignedCode}</p>
-              <div className="ql-actions">
-                <Button variant="ghost" size="sm" onClick={() => setAssignedCode(null)}>Close</Button>
-                <Button variant="primary" size="md" onClick={() => { setAssignedCode(null); navigate(`/assignments`); }}>
-                  View Assignments
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
         <div className="dashboard-header">
           <div>
             <h1 className="dashboard-title">My Quizzes</h1>
@@ -233,12 +111,7 @@ const Dashboard: React.FC = () => {
           <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
             <Link to="/library">
               <Button variant="secondary" size="md">
-                Browse Library
-              </Button>
-            </Link>
-            <Link to="/assignments">
-              <Button variant="secondary" size="md">
-                Assignments
+                Trivia Library
               </Button>
             </Link>
             <Link to="/create">
@@ -268,7 +141,7 @@ const Dashboard: React.FC = () => {
           <div className="dashboard-empty">
             <div className="empty-icon">Q</div>
             <h2>No Quizzes Yet</h2>
-            <p>Create your first quiz and start hosting interactive sessions.</p>
+            <p>Write your own quiz or grab a ready-made trivia pack and host it tonight.</p>
             <Link to="/create">
               <Button variant="primary" size="lg">
                 Create Your First Quiz
@@ -304,13 +177,6 @@ const Dashboard: React.FC = () => {
                     isLoading={launchingId === quiz.id}
                   >
                     Launch
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => { setAssignModal({ quiz }); setAssignDeadline(''); setAssignLabel(''); setAssignedCode(null); }}
-                  >
-                    Assign
                   </Button>
                   <Link to={`/create?edit=${quiz.id}`}>
                     <Button variant="secondary" size="sm">
@@ -351,33 +217,6 @@ const Dashboard: React.FC = () => {
           </section>
         )}
 
-        {/* ---- Active Assignments ---- */}
-        {assignments.length > 0 && (
-          <section className="recent-games-section">
-            <h2 className="recent-games-heading">Assignments</h2>
-            <div className="recent-games-list">
-              {assignments.slice(0, 5).map((a) => {
-                const isOpen = !a.closed && Date.now() <= a.deadline;
-                return (
-                  <div key={a.id} className="recent-game-row">
-                    <div className="recent-game-info">
-                      <span className="recent-game-title">{a.quizTitle}{a.label ? ` — ${a.label}` : ''}</span>
-                      <span className="recent-game-meta">
-                        Code: <strong>{a.code}</strong> · Due: {new Date(a.deadline).toLocaleDateString()} · {isOpen ? 'Open' : 'Closed'}
-                      </span>
-                    </div>
-                    <Link to={`/assignment-report/${a.id}`} className="recent-game-link">View Results →</Link>
-                  </div>
-                );
-              })}
-            </div>
-            {assignments.length > 5 && (
-              <Link to="/assignments" className="recent-game-link" style={{ marginTop: '0.5rem', display: 'inline-block' }}>
-                View all {assignments.length} assignments →
-              </Link>
-            )}
-          </section>
-        )}
       </div>
     </div>
   );

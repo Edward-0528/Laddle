@@ -20,7 +20,6 @@ const FREE_FEATURES = [
 const PRO_FEATURES = [
   'Unlimited quizzes',
   'AI question generation',
-  'Async assignments & homework',
   'Custom branding (logo + colour)',
   'Priority support',
   'Advanced analytics',
@@ -161,8 +160,8 @@ const Pricing: React.FC = () => {
               <p>All major credit and debit cards via Stripe. Your card details are never stored on our servers.</p>
             </div>
             <div className="pricing-faq-item">
-              <h3>Do students need an account?</h3>
-              <p>No — students can join live games and take assignments with just a name and a code.</p>
+              <h3>Do players need an account?</h3>
+              <p>No. Players join with a code (or by scanning the QR code), pick a sticker and type a name. That's it.</p>
             </div>
             <div className="pricing-faq-item">
               <h3>Is there a free trial?</h3>

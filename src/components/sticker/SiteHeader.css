@@ -1,0 +1,24 @@
+.sh {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 18px clamp(16px, 4vw, 40px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  position: relative;
+  z-index: 2;
+}
+.sh-logo { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; }
+.sh-logo span { font-size: 1.7rem; color: var(--st-grape); }
+.sh-nav { display: flex; align-items: center; gap: clamp(8px, 2vw, 22px); }
+.sh-link { font-weight: 800; text-decoration: none; padding: 8px 4px; color: var(--st-ink); }
+.sh-link:hover, .sh-link.active { color: var(--st-grape); }
+.sh-cta { min-height: 46px; padding: 0 20px; font-size: 1.05rem; }
+
+@media (max-width: 680px) {
+  .sh-hide-sm { display: none; }
+}
+@media (max-width: 420px) {
+  .sh-cta { padding: 0 14px; }
+}

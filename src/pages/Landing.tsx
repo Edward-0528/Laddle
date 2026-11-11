@@ -10,6 +10,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import Avatar from '../components/sticker/Avatar';
 import AnswerShape, { answerStyle, CheckIcon } from '../components/sticker/AnswerShape';
 import { AVATARS } from '../components/sticker/avatars';
+import SiteHeader from '../components/sticker/SiteHeader';
+import { CATEGORIES, packsIn } from '../data/trivia';
 import './Landing.css';
 
 const WALL = [
@@ -21,25 +23,17 @@ const WALL = [
   { kind: 'taco', name: 'Zoe', tilt: 3 },
 ] as const;
 
-const DEMO_ANSWERS = ['Mercury', 'Venus', 'Mars', 'Jupiter'];
+const DEMO_ANSWERS = ['Hoth', 'Tatooine', 'Endor', 'Naboo'];
 
 const FEATURES = [
   { title: 'No sign-up for players', body: 'Scan the QR code or type the code, pick a sticker, play. That is the whole onboarding.', color: 'var(--st-lemon)', avatar: 'goose' },
   { title: 'Drop out, hop back in', body: 'Phone died? Wi-Fi blinked? Players rejoin with their score intact, right where the game is.', color: 'var(--st-answer-2)', avatar: 'snail' },
   { title: 'Readable by everyone', body: 'Every answer has a colour, a shape and a letter, so nobody needs to tell red from green.', color: 'var(--st-answer-1)', avatar: 'jelly' },
-  { title: 'Quizzes in seconds', body: 'Write your own, grab one from the K-12 library, or let AI draft one from a topic.', color: 'var(--st-correct)', avatar: 'waffle' },
-  { title: 'Teams mode', body: 'Split the room into teams with one tap and watch the scores stack up together.', color: 'var(--st-answer-4)', avatar: 'broccoli' },
+  { title: 'Hundreds of questions', body: 'Grab a ready-made pack, write your own round, or let AI draft one from any topic.', color: 'var(--st-correct)', avatar: 'waffle' },
+  { title: 'Teams mode', body: 'Pub teams, office departments, kids vs adults: split the room with one tap.', color: 'var(--st-answer-4)', avatar: 'broccoli' },
   { title: 'Made for big screens', body: 'A giant code, a fuse timer and live reveal charts that read from the back row.', color: 'var(--st-answer-3)', avatar: 'moon' },
 ] as const;
 
-const SUBJECTS = [
-  { name: 'Math', subject: 'math' },
-  { name: 'Science', subject: 'science' },
-  { name: 'English', subject: 'english' },
-  { name: 'History', subject: 'history' },
-  { name: 'Social Studies', subject: 'social-studies' },
-  { name: 'Everything', subject: '' },
-];
 
 const Landing: React.FC = () => {
   const [code, setCode] = useState('');
@@ -53,30 +47,18 @@ const Landing: React.FC = () => {
 
   return (
     <div className="st-stage lp">
-      {/* ---------- Header ---------- */}
-      <header className="lp-head">
-        <Link to="/" className="lp-logo" aria-label="PopPop home">
-          <img src="/favicon.svg" alt="" width={40} height={40} />
-          <span className="st-display">PopPop</span>
-        </Link>
-        <nav className="lp-nav" aria-label="Main">
-          <Link to="/library" className="lp-nav__link lp-hide-sm">Library</Link>
-          <Link to="/pricing" className="lp-nav__link lp-hide-sm">Pricing</Link>
-          <Link to="/login" className="lp-nav__link">Log in</Link>
-          <Link to="/register" className="st-btn st-btn--ink lp-nav__cta">Host free</Link>
-        </nav>
-      </header>
+      <SiteHeader />
 
       {/* ---------- Hero ---------- */}
       <section className="lp-hero">
         <div className="lp-hero__copy">
-          <span className="st-tag lp-hero__tag">Live quizzes for any room</span>
+          <span className="st-tag lp-hero__tag">Trivia night, sorted</span>
           <h1 className="st-display lp-hero__title">
-            Quiz night, but <span className="lp-hl">everyone</span> gets a sticker.
+            Trivia night, but <span className="lp-hl">everyone</span> gets a sticker.
           </h1>
           <p className="lp-hero__sub">
-            Put a code on the big screen. Phones join in seconds, no accounts.
-            Then it's colour, shapes, a ticking fuse and a podium with confetti.
+            Pub quiz, office party or Christmas with the family: put a code on the TV,
+            phones join in seconds with no app and no accounts, and the room goes loud.
           </p>
 
           <form className="st-sticker lp-join" onSubmit={join}>
@@ -98,7 +80,7 @@ const Landing: React.FC = () => {
           </form>
 
           <div className="lp-hero__host">
-            <Link to="/register" className="st-btn st-btn--lemon st-btn--lg">Host a game, free</Link>
+            <Link to="/library" className="st-btn st-btn--lemon st-btn--lg">Pick a trivia pack</Link>
             <Link to="/demo" className="lp-link">or try the demo</Link>
           </div>
         </div>
@@ -125,16 +107,16 @@ const Landing: React.FC = () => {
           </div>
 
           <div className="st-sticker lp-phone">
-            <div className="lp-phone__q st-display">Which planet is closest to the sun?</div>
+            <div className="lp-phone__q st-display">Which planet is Luke Skywalker from?</div>
             <div className="lp-phone__fuse"><span /></div>
             <div className="lp-phone__grid">
               {DEMO_ANSWERS.map((a, i) => {
                 const s = answerStyle(i);
                 return (
-                  <div key={a} className={`lp-tile ${i === 0 ? 'is-picked' : ''}`} style={{ background: s.color, color: s.ink }}>
+                  <div key={a} className={`lp-tile ${i === 1 ? 'is-picked' : ''}`} style={{ background: s.color, color: s.ink }}>
                     <AnswerShape index={i} size={18} />
                     <span>{a}</span>
-                    {i === 0 && <span className="lp-tile__ok"><CheckIcon size={14} color="var(--st-ink)" /></span>}
+                    {i === 1 && <span className="lp-tile__ok"><CheckIcon size={14} color="var(--st-ink)" /></span>}
                   </div>
                 );
               })}
@@ -152,18 +134,18 @@ const Landing: React.FC = () => {
         <ol className="lp-steps">
           <li className="st-sticker lp-step">
             <span className="lp-step__num" style={{ background: 'var(--st-lemon)' }}>1</span>
-            <h3 className="st-display">Host picks a quiz</h3>
-            <p>Choose one of yours or one from the library and press Start. A big code and QR code appear on screen.</p>
+            <h3 className="st-display">Pick a trivia pack</h3>
+            <p>Star Wars, Disney, 90s, Christmas and more. Tap Host and a giant code and QR code land on the TV.</p>
           </li>
           <li className="st-sticker lp-step">
             <span className="lp-step__num" style={{ background: 'var(--st-answer-1)' }}>2</span>
-            <h3 className="st-display">Guests scan and stick</h3>
-            <p>Phones open the game straight away. Players pick a silly sticker, type a name, and land on the wall.</p>
+            <h3 className="st-display">Everyone scans and sticks</h3>
+            <p>Phones open the game straight away. Pick a silly sticker, type a name, and you're on the wall.</p>
           </li>
           <li className="st-sticker lp-step">
             <span className="lp-step__num" style={{ background: 'var(--st-answer-2)' }}>3</span>
             <h3 className="st-display">Everybody plays</h3>
-            <p>Fast answers score more. Reveals, leaderboards and a podium keep the room loud till the end.</p>
+            <p>Fast answers score more. Reveals, a live leaderboard and a confetti podium crown the winner.</p>
           </li>
         </ol>
       </section>
@@ -202,18 +184,13 @@ const Landing: React.FC = () => {
 
       {/* ---------- Library ---------- */}
       <section className="lp-section lp-library">
-        <h2 className="st-display lp-h2">Nothing to write? Borrow one.</h2>
-        <p className="lp-lede">Ready-made K-12 quizzes aligned to California standards. Copy one and launch it in seconds.</p>
+        <h2 className="st-display lp-h2">Packs for every crowd.</h2>
+        <p className="lp-lede">{packsIn().length} ready-made trivia packs. Pick one and host it in a single tap.</p>
         <div className="lp-subjects">
-          {SUBJECTS.map((s, i) => (
-            <Link
-              key={s.name}
-              to={s.subject ? `/library?subject=${s.subject}` : '/library'}
-              className="lp-subject"
-              style={{ background: answerStyle(i).color, color: answerStyle(i).ink }}
-            >
-              <AnswerShape index={i} size={18} />
-              {s.name}
+          {CATEGORIES.map((c) => (
+            <Link key={c.id} to={`/library?category=${c.id}`} className="lp-subject" style={{ background: c.color, color: c.ink }}>
+              <Avatar kind={c.avatar} size={28} decorative />
+              {c.label}
             </Link>
           ))}
         </div>
@@ -226,9 +203,9 @@ const Landing: React.FC = () => {
           <Avatar kind="banana" size={70} decorative />
           <Avatar kind="cupcake" size={84} decorative />
         </div>
-        <h2 className="st-display lp-cta__title">Your next quiz starts with one code.</h2>
+        <h2 className="st-display lp-cta__title">Your next trivia night starts with one code.</h2>
         <div className="lp-cta__actions">
-          <Link to="/register" className="st-btn st-btn--ink st-btn--lg">Host a game, free</Link>
+          <Link to="/library" className="st-btn st-btn--ink st-btn--lg">Host a game, free</Link>
           <Link to="/join" className="st-btn st-btn--lemon st-btn--lg">Join a game</Link>
         </div>
       </section>
@@ -238,7 +215,7 @@ const Landing: React.FC = () => {
         <span className="st-display lp-foot__brand">PopPop</span>
         <nav className="lp-foot__links" aria-label="Footer">
           <Link to="/join">Join</Link>
-          <Link to="/library">Library</Link>
+          <Link to="/library">Trivia packs</Link>
           <Link to="/marketplace">Marketplace</Link>
           <Link to="/pricing">Pricing</Link>
           <Link to="/login">Log in</Link>

@@ -8,46 +8,31 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { getPublicQuizzes, upvoteQuiz, forkQuiz } from '../services/quizzes';
-import type { Quiz, SubjectArea, GradeBand } from '../types/quiz';
+import type { Quiz } from '../types/quiz';
+import { CATEGORIES } from '../data/trivia';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import './Marketplace.css';
 
-const SUBJECTS: Array<{ value: SubjectArea | ''; label: string }> = [
-  { value: '', label: 'All Subjects' },
-  { value: 'math', label: 'Math' },
-  { value: 'science', label: 'Science' },
-  { value: 'english', label: 'English' },
-  { value: 'history', label: 'History' },
-  { value: 'social-studies', label: 'Social Studies' },
-  { value: 'other', label: 'Other' },
-];
+const CATEGORY_FILTERS = ['', ...CATEGORIES.map((c) => c.label)];
 
-const GRADE_BANDS: Array<{ value: GradeBand | ''; label: string }> = [
-  { value: '', label: 'All Grades' },
-  { value: 'K-2', label: 'K–2' },
-  { value: '3-5', label: '3–5' },
-  { value: '6-8', label: '6–8' },
-  { value: '9-12', label: '9–12' },
-];
 
 const Marketplace: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const [subject, setSubject] = useState<SubjectArea | ''>('');
-  const [gradeBand, setGradeBand] = useState<GradeBand | ''>('');
+  const [category, setCategory] = useState('');
   const [search, setSearch] = useState('');
   const [forkingId, setForkingId] = useState<string | null>(null);
   const [forkedId, setForkedId] = useState<string | null>(null);
   const [upvotedIds, setUpvotedIds] = useState<Set<string>>(new Set());
   const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
 
-  const queryKey = ['marketplace', subject, gradeBand, search];
+  const queryKey = ['marketplace', category, search];
   const { data: quizzes = [], isLoading } = useQuery<Quiz[]>({
     queryKey,
-    queryFn: () => getPublicQuizzes({ subject: subject || undefined, gradeBand: gradeBand || undefined, search: search || undefined }),
+    queryFn: () => getPublicQuizzes({ category: category || undefined, search: search || undefined }),
     staleTime: 30_000,
   });
 
@@ -104,24 +89,13 @@ const Marketplace: React.FC = () => {
             />
           </div>
           <div className="mp-filter-pills">
-            {SUBJECTS.map((s) => (
+            {CATEGORY_FILTERS.map((c) => (
               <button
-                key={s.value}
-                className={`mp-pill ${subject === s.value ? 'mp-pill-active' : ''}`}
-                onClick={() => setSubject(s.value as SubjectArea | '')}
+                key={c || 'all'}
+                className={`mp-pill ${category === c ? 'mp-pill-active' : ''}`}
+                onClick={() => setCategory(c)}
               >
-                {s.label}
-              </button>
-            ))}
-          </div>
-          <div className="mp-filter-pills">
-            {GRADE_BANDS.map((g) => (
-              <button
-                key={g.value}
-                className={`mp-pill ${gradeBand === g.value ? 'mp-pill-active' : ''}`}
-                onClick={() => setGradeBand(g.value as GradeBand | '')}
-              >
-                {g.label}
+                {c || 'All categories'}
               </button>
             ))}
           </div>
@@ -141,8 +115,7 @@ const Marketplace: React.FC = () => {
               <div key={quiz.id} className="mp-card">
                 <div className="mp-card-body" onClick={() => setPreviewQuiz(quiz)} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setPreviewQuiz(quiz)}>
                   <div className="mp-card-meta">
-                    {quiz.subject && <span className="mp-badge mp-badge-subject">{quiz.subject}</span>}
-                    {quiz.gradeBand && <span className="mp-badge mp-badge-grade">{quiz.gradeBand}</span>}
+                    {quiz.category && <span className="mp-badge mp-badge-subject">{quiz.category}</span>}
                   </div>
                   <h3 className="mp-card-title">{quiz.title}</h3>
                   {quiz.description && <p className="mp-card-desc">{quiz.description}</p>}
@@ -199,8 +172,7 @@ const Marketplace: React.FC = () => {
             </div>
             {previewQuiz.description && <p className="mp-modal-desc">{previewQuiz.description}</p>}
             <div className="mp-modal-meta">
-              {previewQuiz.subject && <span className="mp-badge mp-badge-subject">{previewQuiz.subject}</span>}
-              {previewQuiz.gradeBand && <span className="mp-badge mp-badge-grade">{previewQuiz.gradeBand}</span>}
+              {previewQuiz.category && <span className="mp-badge mp-badge-subject">{previewQuiz.category}</span>}
               <span className="mp-badge">{previewQuiz.questions.length} questions</span>
             </div>
             <ol className="mp-preview-list">

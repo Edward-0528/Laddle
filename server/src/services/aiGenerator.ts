@@ -90,18 +90,19 @@ export async function generateQuestions(opts: GenerateOptions): Promise<AIQuesti
     },
   });
 
-  const prompt = `Generate exactly ${safeCount} quiz questions about "${topic}" suitable for grade level "${gradeLevel}".
+  const prompt = `Generate exactly ${safeCount} trivia questions about "${topic}" for a live pub quiz or party game night. Pitch them at this level: "${gradeLevel}".
 
 Rules:
-- Each question must be clear and unambiguous.
+- Each question must be clear, unambiguous and based on well-established facts that will not change over time.
+- Make them fun to read out loud to a room; keep each question under 120 characters and each choice under 40.
 - For multiple-choice: provide exactly 4 choices with one correct answer.
 - For true-false: use choices ["True", "False"] only.
 - correctAnswerIndex is 0-based.
 - Do NOT include answer explanations in the choices themselves.
-- Vary question difficulty: some easy, some medium, some hard.
+- Keep the questions at the requested level.
 - Return ONLY the JSON array, no extra text.`;
 
-  logger.info(`[AI] Generating ${safeCount} questions about "${topic}" for grade "${gradeLevel}"`);
+  logger.info(`[AI] Generating ${safeCount} questions about "${topic}" at level "${gradeLevel}"`);
 
   const result = await model.generateContent(prompt);
   const text = result.response.text();

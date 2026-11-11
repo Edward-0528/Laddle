@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
 // Demo Page
-// Interactive showcase of PopPop! — shows the teacher "host" view on the
-// left and a simulated student device view on the right. Visitors can tap
-// answers on the student side to experience a live-quiz feel.
+// Interactive showcase of PopPop! — shows the host view on the
+// left and a simulated player phone view on the right. Visitors can tap
+// answers on the player side to experience a live-quiz feel.
 // ---------------------------------------------------------------------------
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -13,8 +13,8 @@ import './Demo.css';
 const DEMO_QUESTIONS = [
   {
     id: 0,
-    question: 'What is the capital of California?',
-    answers: ['Los Angeles', 'Sacramento', 'San Francisco', 'San Diego'],
+    question: 'What is Luke Skywalker\'s home planet?',
+    answers: ['Hoth', 'Tatooine', 'Endor', 'Naboo'],
     correctIndex: 1,
     emoji: '🏛️',
     timeLimit: 15,
@@ -37,8 +37,8 @@ const DEMO_QUESTIONS = [
   },
   {
     id: 3,
-    question: 'What is 12 × 8?',
-    answers: ['84', '96', '104', '88'],
+    question: 'In Home Alone, what is the name of the boy left behind?',
+    answers: ['Buzz', 'Kevin', 'Marv', 'Harry'],
     correctIndex: 1,
     emoji: '🔢',
     timeLimit: 15,
@@ -191,7 +191,7 @@ export default function Demo() {
           <span className="demo-badge">Live Demo</span>
         </div>
         <div className="demo-header-hint">
-          This is how PopPop! works in a real classroom
+          This is how PopPop! works at a real trivia night
         </div>
       </div>
 
@@ -200,7 +200,7 @@ export default function Demo() {
         {/* ---- LEFT: Teacher / Monitor view ---- */}
         <div className="demo-panel demo-panel-teacher">
           <div className="demo-panel-label teacher-label">
-            🖥️ Teacher's Screen (projected in class)
+            🖥️ Host's Screen (on the TV)
           </div>
 
           {phase === 'lobby' && (
@@ -310,7 +310,7 @@ export default function Demo() {
         {/* ---- RIGHT: Student device view ---- */}
         <div className="demo-panel demo-panel-student">
           <div className="demo-panel-label student-label">
-            📱 Student's Phone (each student sees this)
+            📱 Player's Phone (everyone sees this)
           </div>
 
           <div className="demo-phone-frame">
