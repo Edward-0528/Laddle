@@ -221,6 +221,32 @@ export function addPlayer(
 }
 
 /**
+ * Lets a player change their own sticker (name and/or avatar) while the game
+ * is still in the lobby. The player proves who they are with their token.
+ */
+export function updatePlayer(
+  code: string,
+  socketId: string,
+  token: string,
+  changes: { name?: string; avatar?: string }
+): { ok: boolean; reason?: string; name?: string; avatar?: string } {
+  const game = games[code];
+  if (!game) return { ok: false, reason: 'Game not found.' };
+  if (game.state !== 'lobby') return { ok: false, reason: 'The game has started, so stickers are locked.' };
+  const player = game.players[socketId];
+  if (!player || player.token !== token) return { ok: false, reason: 'We could not find your seat. Try refreshing.' };
+
+  if (changes.name && changes.name.toLowerCase() !== player.name.toLowerCase()) {
+    const taken = Object.values(game.players).some((p) => p !== player && p.name.toLowerCase() === changes.name!.toLowerCase());
+    if (taken) return { ok: false, reason: 'Someone in this game already has that name. Try another one.' };
+  }
+  if (changes.name) player.name = changes.name;
+  if (changes.avatar) player.avatar = changes.avatar;
+  logger.info('Player updated sticker', { code, socketId });
+  return { ok: true, name: player.name, avatar: player.avatar };
+}
+
+/**
  * Returns the list of players for a given game.
  */
 /** What other clients may see about a player: never the resume token. */

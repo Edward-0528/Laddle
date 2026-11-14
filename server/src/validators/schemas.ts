@@ -109,6 +109,14 @@ export const PlayerResumeSchema = z.object({
   playerToken: TokenSchema,
 });
 
+/** player:update: change your own sticker (name and/or avatar) in the lobby. */
+export const PlayerUpdateSchema = z.object({
+  code: CodeSchema,
+  playerToken: TokenSchema,
+  name: z.string().trim().min(1).max(30).transform(sanitize).refine((v) => v.length > 0, 'Name required').optional(),
+  avatar: z.enum(AVATAR_KINDS).optional(),
+});
+
 /** host:extend-time: only positive, bounded extensions. */
 export const ExtendTimeSchema = z.object({
   code: CodeSchema,

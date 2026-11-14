@@ -12,6 +12,7 @@ export const EVENTS = {
   HOST_SKIP:      'host:skip',
   HOST_END_GAME:  'host:end',
   PLAYER_JOIN:    'player:join',
+  PLAYER_UPDATE:  'player:update',
   PLAYER_ANSWER:  'player:answer',
   LOBBY_REQUEST:  'lobby:request',
 

@@ -157,6 +157,14 @@
 .g-plobby__other { display: inline-flex; width: 48px; height: 48px; align-items: center; justify-content: center; background: var(--st-white); border-radius: 50%; box-shadow: var(--st-shadow-sm); }
 .g-plobby__more { display: inline-flex; align-items: center; justify-content: center; min-width: 48px; height: 48px; padding: 0 8px; border-radius: 999px; background: var(--st-ink); color: var(--st-lemon); font-family: var(--st-font-display); font-weight: 700; }
 .g-plobby__me { justify-content: center; position: relative; z-index: 1; }
+.g-plobby__avatar { position: relative; background: none; border: 0; padding: 0; cursor: pointer; rotate: -5deg; line-height: 0; border-radius: 50%; }
+.g-plobby__avatar:focus-visible { outline: 4px solid var(--st-grape); outline-offset: 4px; }
+.g-plobby__edit {
+  position: absolute; right: -6px; bottom: 8px; rotate: 8deg;
+  background: var(--st-ink); color: var(--st-lemon);
+  border: 4px solid var(--st-white); border-radius: 14px; box-shadow: var(--st-shadow-sm);
+  padding: 6px 14px; font-family: var(--st-font-display); font-weight: 700; font-size: 1.05rem; line-height: 1.2;
+}
 .g-plobby__title { font-size: 2.4rem; }
 .g-plobby__name { font-size: 1.6rem; color: var(--st-grape); }
 .g-plobby__hint { max-width: 300px; font-size: 1.1rem; }

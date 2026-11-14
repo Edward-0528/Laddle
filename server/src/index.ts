@@ -33,12 +33,13 @@ import {
   CodeSchema,
   HostReconnectSchema,
   PlayerResumeSchema,
+  PlayerUpdateSchema,
   ExtendTimeSchema,
   SetTeamsSchema,
 } from './validators/schemas';
 import { generateQuestions } from './services/aiGenerator';
 import { adminConfigured, adminDb, verifyRequestUser } from './services/firebaseAdmin';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import {
   checkRateLimit,
   clearRateLimits,
@@ -48,6 +49,7 @@ import {
   createGame,
   getGame,
   addPlayer,
+  updatePlayer,
   getPlayerList,
   getConnectedPlayerList,
   isGameHost,
@@ -141,7 +143,7 @@ const aiLimiter = rateLimit({
   limit: 10,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  keyGenerator: (req) => (req as any).verifiedUid ?? req.ip ?? 'unknown',
+  keyGenerator: (req) => (req as any).verifiedUid ?? ipKeyGenerator(req.ip ?? 'unknown'),
   message: { error: 'You have generated a lot of questions. Please wait a few minutes and try again.' },
 });
 
@@ -449,6 +451,28 @@ io.on('connection', (socket) => {
       }
 
       callback({ ok: true, playerToken: joinResult.playerToken });
+    }
+  );
+
+  // -----------------------------------------------------------------------
+  // player:update - Change your own sticker (name / avatar) before the start
+  // -----------------------------------------------------------------------
+  socket.on(
+    EVENTS.PLAYER_UPDATE,
+    (payload: unknown, callback: (data: { ok: boolean; reason?: string; name?: string; avatar?: string }) => void) => {
+      if (typeof callback !== 'function') return;
+      if (!checkRateLimit(socket.id, 'player:update', RATE_LIMITS.playerJoin)) {
+        return callback({ ok: false, reason: 'Slow down a little and try again.' });
+      }
+      const parsed = PlayerUpdateSchema.safeParse(payload);
+      if (!parsed.success || (!parsed.data.name && !parsed.data.avatar)) {
+        return callback({ ok: false, reason: 'That name or sticker is not allowed.' });
+      }
+      const { code, playerToken, name, avatar } = parsed.data;
+      const result = updatePlayer(code, socket.id, playerToken, { name, avatar });
+      if (!result.ok) return callback(result);
+      io.to(code).emit(EVENTS.LOBBY_UPDATE, getConnectedPlayerList(code));
+      callback(result);
     }
   );
 

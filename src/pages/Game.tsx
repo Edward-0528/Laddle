@@ -8,7 +8,7 @@
 // Socket protocol is unchanged apart from the optional `avatar` field.
 // ---------------------------------------------------------------------------
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { socket } from '../services/socket';
 import { clearPlayerToken, getHostToken, getPlayerToken } from '../services/session';
@@ -18,6 +18,8 @@ import { saveGameResult } from '../services/gameResults';
 import { saveStudentProgress } from '../services/studentProgress';
 import { QRCodeSVG } from 'qrcode.react';
 import Avatar from '../components/sticker/Avatar';
+import StickerEditor from '../components/sticker/StickerEditor';
+import type { AvatarKind } from '../components/sticker/avatars';
 import AnswerShape, { answerStyle, ArrowIcon, CheckIcon, CrossIcon } from '../components/sticker/AnswerShape';
 import './Game.css';
 
@@ -139,7 +141,8 @@ const Game = () => {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isHostRef = useRef(false);
-  const me = useMemo(() => readMe(code), [code]);
+  const [me, setMe] = useState(() => readMe(code));
+  const [editingSticker, setEditingSticker] = useState(false);
 
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const joinUrl = `${origin}/j/${code}`;
@@ -746,6 +749,27 @@ const Game = () => {
   // Lobby: player (phone)
   // ---------------------------------------------------------------------------
 
+  /** Player edits their own sticker in the lobby. Resolves to an error message or null. */
+  function saveSticker(changes: { name: string; avatar: AvatarKind }): Promise<string | null> {
+    const playerToken = code ? getPlayerToken(code) : null;
+    if (!code || !playerToken) return Promise.resolve('We could not find your seat. Try refreshing.');
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => resolve('No answer from the game. Check your connection.'), 8000);
+      socket.emit(EVENTS.PLAYER_UPDATE, { code, playerToken, ...changes }, (res: { ok: boolean; reason?: string; name?: string; avatar?: string }) => {
+        clearTimeout(timer);
+        if (!res?.ok) { resolve(res?.reason ?? 'Could not save your sticker.'); return; }
+        const next = { name: res.name ?? changes.name, avatar: res.avatar ?? changes.avatar };
+        setMe(next);
+        try {
+          sessionStorage.setItem(`ladle.me.${code}`, JSON.stringify(next));
+          localStorage.setItem('ladle.name', next.name);
+          localStorage.setItem('ladle.avatar', next.avatar);
+        } catch { /* storage unavailable: fine */ }
+        resolve(null);
+      });
+    });
+  }
+
   if (!isHost) {
     const mine = me ? players.find((p) => p.name.toLowerCase() === me.name.toLowerCase()) : undefined;
     const others = players.filter((p) => p !== mine);
@@ -753,9 +777,10 @@ const Game = () => {
     return (
       <div className="st-stage g-phone g-plobby">
         <div className="g-phone__inner g-center g-plobby__me">
-          <div style={{ transform: 'rotate(-5deg)' }}>
-            <div className="st-anim-slap"><Avatar kind={mine?.avatar ?? me?.avatar} name={me?.name ?? ''} size={180} /></div>
-          </div>
+          <button type="button" className="g-plobby__avatar" onClick={() => setEditingSticker(true)} aria-label="Edit your sticker">
+            <div className="st-anim-slap"><Avatar kind={mine?.avatar ?? me?.avatar} name={me?.name ?? ''} size={180} decorative /></div>
+            <span className="g-plobby__edit">Edit</span>
+          </button>
           <div className="st-display g-plobby__title">{resumedMidGame ? "You're back in!" : "You're stuck in!"}</div>
           {me && <div className="st-display g-plobby__name">{me.name}</div>}
           {myTeamName && <div className="st-tag">Team {myTeamName}</div>}
@@ -776,6 +801,14 @@ const Game = () => {
             </div>
           )}
         </div>
+        {editingSticker && me && (
+          <StickerEditor
+            name={me.name}
+            avatar={mine?.avatar ?? me.avatar}
+            onSave={saveSticker}
+            onClose={() => setEditingSticker(false)}
+          />
+        )}
         {overlays}
       </div>
     );

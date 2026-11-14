@@ -24,6 +24,7 @@ export const EVENTS = {
   PLAYER_ANSWER:    'player:answer',
   LOBBY_REQUEST:    'lobby:request',
   SESSION_RESUME:   'session:resume',
+  PLAYER_UPDATE:    'player:update',
 
   // ---- Server → Client ----
   GAME_ROLE:          'game:role',
