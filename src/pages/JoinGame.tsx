@@ -12,6 +12,7 @@ import { socket } from '../services/socket';
 import { getPlayerToken, savePlayerToken } from '../services/session';
 import Avatar from '../components/sticker/Avatar';
 import { AVATARS, avatarLabel, isAvatarKind, randomAvatar, type AvatarKind } from '../components/sticker/avatars';
+import { pop } from '../services/sound/sfx';
 import './JoinGame.css';
 
 const NAME_KEY = 'ladle.name';
@@ -77,6 +78,7 @@ const JoinGame: React.FC = () => {
     socket.emit('player:join', { code, name, avatar }, (response: { ok: boolean; reason?: string; playerToken?: string }) => {
       setIsJoining(false);
       if (response.ok) {
+        pop();
         writeStored(NAME_KEY, name);
         writeStored(AVATAR_KEY, avatar);
         saveMe(code, name, avatar);

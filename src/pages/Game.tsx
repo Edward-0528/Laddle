@@ -19,6 +19,9 @@ import { saveStudentProgress } from '../services/studentProgress';
 import { QRCodeSVG } from 'qrcode.react';
 import Avatar from '../components/sticker/Avatar';
 import StickerEditor from '../components/sticker/StickerEditor';
+import SoundToggle from '../components/sticker/SoundToggle';
+import { useGameSounds } from '../hooks/useGameSounds';
+import * as sfx from '../services/sound/sfx';
 import type { AvatarKind } from '../components/sticker/avatars';
 import AnswerShape, { answerStyle, ArrowIcon, CheckIcon, CrossIcon } from '../components/sticker/AnswerShape';
 import './Game.css';
@@ -373,12 +376,26 @@ const Game = () => {
   function selectChoice(choiceIndex: number) {
     if (isHost || hasAnswered || selectedChoice !== null || timeLeft <= 0 || gameState !== 'question' || isPaused) return;
     setSelectedChoice(choiceIndex);
-    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate?.(15);
+    sfx.squish();
     socket.emit(EVENTS.PLAYER_ANSWER, { code, choiceIndex });
   }
 
   const fusePct = totalTime > 0 ? Math.max(0, Math.min(100, (timeLeft / totalTime) * 100)) : 0;
   const myEntry = me ? leaderboard.find((p) => p.name.toLowerCase() === me.name.toLowerCase()) : undefined;
+
+  useGameSounds({
+    isHost,
+    gameState,
+    playerNames: players.map((p) => p.name),
+    questionIndex: currentQuestion?.index ?? null,
+    timeLeft,
+    isPaused,
+    revealPhase,
+    myResult: !questionResult || isHost ? null : selectedChoice === null ? 'none' : selectedChoice === questionResult.correctIndex ? 'correct' : 'wrong',
+    hasAnswered,
+    climbers: questionResult ? questionResult.leaderboard.filter((p) => p.rankDelta > 0).length : 0,
+    myFinalRank: gameState === 'results' && myEntry ? myEntry.rank : null,
+  });
 
   // ---------------------------------------------------------------------------
   // Shared overlays
@@ -692,6 +709,7 @@ const Game = () => {
             >
               End game
             </button>
+            <SoundToggle withMusic />
           </div>
         </div>
         {overlays}
@@ -776,6 +794,7 @@ const Game = () => {
     const shown = others.slice(-8);
     return (
       <div className="st-stage g-phone g-plobby">
+        <SoundToggle className="snd--float" />
         <div className="g-phone__inner g-center g-plobby__me">
           <button type="button" className="g-plobby__avatar" onClick={() => setEditingSticker(true)} aria-label="Edit your sticker">
             <div className="st-anim-slap"><Avatar kind={mine?.avatar ?? me?.avatar} name={me?.name ?? ''} size={180} decorative /></div>
@@ -823,7 +842,10 @@ const Game = () => {
     <div className="st-stage g-host g-lobby">
       <header className="g-lobby__top">
         <span className="st-display g-lobby__brand">PopPop</span>
-        <span className="st-muted">{quizTitle || 'Get ready'}</span>
+        <span className="g-lobby__top-right">
+          <span className="st-muted">{quizTitle || 'Get ready'}</span>
+          <SoundToggle withMusic />
+        </span>
       </header>
 
       <section className="g-lobby__join" aria-label="How to join">

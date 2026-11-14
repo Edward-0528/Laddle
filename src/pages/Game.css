@@ -54,6 +54,7 @@
 /* Lobby */
 .g-lobby__top { display: flex; align-items: center; justify-content: space-between; padding: 2.4vh 3vw 0; }
 .g-lobby__brand { font-size: max(1.6rem, 3.6vh); }
+.g-lobby__top-right { display: inline-flex; align-items: center; gap: 14px; }
 .g-lobby__join { display: flex; flex-direction: column; align-items: center; gap: 1.6vh; padding-top: 1vh; }
 .g-lobby__how { font-size: max(1.5rem, 3.8vh); text-align: center; }
 .g-lobby__url { color: var(--st-grape); }

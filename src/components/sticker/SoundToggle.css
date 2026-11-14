@@ -1,0 +1,31 @@
+.snd { display: inline-flex; align-items: center; gap: 8px; }
+.snd__btn {
+  width: 44px; height: 44px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 14px;
+  border: 3px solid var(--st-white);
+  background: var(--st-ink);
+  color: var(--st-lemon);
+  box-shadow: var(--st-shadow-sm);
+  cursor: pointer;
+  transition: transform var(--st-dur-fast) var(--st-ease-pop);
+}
+.snd__btn:active { transform: scale(0.92); }
+.snd__btn.is-off { background: var(--st-paper-deep); color: var(--st-ink-soft); }
+.snd__btn:focus-visible { outline: 4px solid var(--st-grape); outline-offset: 2px; }
+.snd__hint {
+  border: 3px solid var(--st-white);
+  border-radius: 999px;
+  background: var(--st-lemon);
+  color: var(--st-ink);
+  font-family: var(--st-font-display);
+  font-weight: 700;
+  padding: 6px 14px;
+  box-shadow: var(--st-shadow-sm);
+  cursor: pointer;
+  animation: st-hop 1.2s ease-in-out infinite;
+}
+
+/* Floating placement on phone screens */
+.snd--float { position: fixed; top: calc(10px + env(safe-area-inset-top)); right: 10px; z-index: 40; }
+.snd--float .snd__btn { width: 40px; height: 40px; opacity: 0.85; }
