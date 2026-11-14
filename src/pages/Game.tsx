@@ -75,6 +75,16 @@ type RevealPhase = 'correct' | 'leaderboard';
 
 const STICKER_TILTS = [-6, 4, -3, 7, -8, 2, 5, -5];
 const CHIP_COLORS = ['var(--st-answer-1)', 'var(--st-answer-2)', 'var(--st-answer-3)', '#2EE6A8', '#FF6B5A', '#B48CFF'];
+
+/** Stable per-player look: the same name always gets the same tilt and color,
+ *  so stickers don't reshuffle when someone else joins, leaves or reconnects. */
+function nameHash(name: string): number {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return h;
+}
+const tiltFor = (name: string) => STICKER_TILTS[nameHash(name) % STICKER_TILTS.length];
+const colorFor = (name: string) => CHIP_COLORS[(nameHash(name) >>> 3) % CHIP_COLORS.length];
 const CONFETTI_COLORS = ['#FF4FA3', '#3D8BFF', '#FFC83D', '#7B3CFF', '#2EE6A8', '#FF6B5A'];
 
 function readMe(code?: string): { name: string; avatar?: string } | null {
@@ -738,16 +748,10 @@ const Game = () => {
 
   if (!isHost) {
     const mine = me ? players.find((p) => p.name.toLowerCase() === me.name.toLowerCase()) : undefined;
-    const others = players.filter((p) => p !== mine).slice(0, 10);
+    const others = players.filter((p) => p !== mine);
+    const shown = others.slice(-8);
     return (
       <div className="st-stage g-phone g-plobby">
-        {others.map((p, i) => (
-          <div key={p.id} className="g-plobby__other" style={{ left: `${i % 2 === 0 ? 4 + (i * 3) % 14 : 52 + (i * 5) % 18}%`, top: `${i < 5 ? 4 + i * 6 : 74 + (i - 5) * 5}%`, transform: `rotate(${STICKER_TILTS[i % STICKER_TILTS.length]}deg)` }}>
-            <span className="st-chip st-anim-slap" style={{ background: 'var(--st-white)', animationDelay: `${i * 0.08}s` }}>
-              <Avatar kind={p.avatar} name={p.name} size={28} decorative />{p.name}
-            </span>
-          </div>
-        ))}
         <div className="g-phone__inner g-center g-plobby__me">
           <div style={{ transform: 'rotate(-5deg)' }}>
             <div className="st-anim-slap"><Avatar kind={mine?.avatar ?? me?.avatar} name={me?.name ?? ''} size={180} /></div>
@@ -758,6 +762,19 @@ const Game = () => {
           <p className="st-muted g-plobby__hint">
             {resumedMidGame ? 'Your score is safe. The next question is on its way' : 'Find your sticker on the big screen. The game starts soon'}<span className="st-dots"><span>.</span><span>.</span><span>.</span></span>
           </p>
+          {others.length > 0 && (
+            <div className="g-plobby__others" aria-label={`${others.length} other players in the lobby`}>
+              <span className="g-plobby__others-label">Also here</span>
+              <div className="g-plobby__others-row">
+                {shown.map((p) => (
+                  <span key={p.name} className="g-plobby__other st-anim-slap" title={p.name} style={{ rotate: `${tiltFor(p.name)}deg` }}>
+                    <Avatar kind={p.avatar} name={p.name} size={40} decorative />
+                  </span>
+                ))}
+                {others.length > shown.length && <span className="g-plobby__more">+{others.length - shown.length}</span>}
+              </div>
+            </div>
+          )}
         </div>
         {overlays}
       </div>
@@ -792,9 +809,9 @@ const Game = () => {
 
       <section className="g-lobby__wall" aria-label="Players">
         {players.length === 0 && <p className="st-muted g-lobby__empty">Players will pop up here as they join.</p>}
-        {players.map((p, i) => (
-          <div key={p.id} style={{ transform: `rotate(${STICKER_TILTS[i % STICKER_TILTS.length]}deg)` }}>
-            <span className="st-chip st-anim-slap g-lobby__chip" style={{ background: CHIP_COLORS[i % CHIP_COLORS.length] }}>
+        {players.map((p) => (
+          <div key={p.name} className="g-lobby__slot" style={{ rotate: `${tiltFor(p.name)}deg` }}>
+            <span className="st-chip st-anim-slap g-lobby__chip" style={{ background: colorFor(p.name) }}>
               <Avatar kind={p.avatar} name={p.name} size={40} decorative />
               {p.name}
               {teamsEnabled && p.teamName && <span className="g-lobby__team">{p.teamName}</span>}

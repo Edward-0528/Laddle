@@ -12,9 +12,12 @@ import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
 import App from './App';
+import { installMobileFixes } from './services/mobileFixes';
 import './styles/variables.css';
 import './styles/globals.css';
 import './styles/sticker.css';
+
+installMobileFixes();
 
 const queryClient = new QueryClient({
   defaultOptions: {

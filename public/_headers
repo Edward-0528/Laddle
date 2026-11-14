@@ -1,0 +1,9 @@
+# Hashed build assets never change: cache them for a year
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# The app shell must always be revalidated so phones pick up new deploys
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+/
+  Cache-Control: public, max-age=0, must-revalidate

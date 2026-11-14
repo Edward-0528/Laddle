@@ -5,7 +5,4 @@
 [build.environment]
   NODE_VERSION = "20"
 
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+# Redirects and headers live in public/_redirects and public/_headers
